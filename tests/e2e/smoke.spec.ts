@@ -36,7 +36,7 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   page
 }, testInfo) => {
   const workspace = resolve(process.cwd());
-  const suffix = testInfo.project.name;
+  const suffix = `${testInfo.project.name}-${testInfo.retry}`;
   const scheduleName = `E2E schedule ${suffix}`;
   const folderName = `E2E folder ${suffix}`;
 
