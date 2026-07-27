@@ -2195,6 +2195,10 @@ textarea:focus-visible {
   width: min(720px, 100%);
 }
 
+.schedule-dialog-body {
+  display: contents;
+}
+
 .history-drawer {
   position: absolute;
   inset: 0 0 0 auto;
@@ -2973,27 +2977,41 @@ textarea:focus-visible {
   }
 
   .dialog-backdrop {
+    bottom: auto;
     align-items: end;
+    height: 100vh;
+    height: 100dvh;
     padding: 0;
   }
 
   .dialog {
     width: 100%;
     max-height: 92vh;
+    max-height: 92dvh;
     padding: 20px 17px calc(18px + env(safe-area-inset-bottom));
     border-radius: 18px 18px 0 0;
   }
 
   .schedule-dialog {
-    padding-bottom: 0;
-    scroll-padding-bottom: calc(76px + env(safe-area-inset-bottom));
+    display: flex;
+    overflow: clip;
+    flex-direction: column;
+    padding: 0;
+  }
+
+  .schedule-dialog-body {
+    display: block;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 20px 17px 8px;
   }
 
   .schedule-dialog .dialog-actions {
-    position: sticky;
-    z-index: 2;
-    bottom: 0;
-    margin: 6px -17px 0;
+    position: relative;
+    z-index: 1;
+    flex: none;
+    margin: 0;
     padding: 14px 17px calc(18px + env(safe-area-inset-bottom));
     background: var(--panel);
     box-shadow: 0 -10px 24px rgb(15 18 16 / 8%);

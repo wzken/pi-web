@@ -358,86 +358,88 @@ function ScheduleDialog({
   return (
     <div className={ui("dialog-backdrop")} onPointerDown={onClose}>
       <form className={ui("dialog schedule-dialog")} onSubmit={submit} onPointerDown={(event) => event.stopPropagation()}>
-        <div className={ui("dialog-heading")}>
-          <div>
-            <p className={ui("eyebrow")}>{job ? "EDIT SCHEDULE" : "NEW SCHEDULE"}</p>
-            <h2>{job ? t("编辑调度") : t("新建调度")}</h2>
+        <div className={ui("schedule-dialog-body")}>
+          <div className={ui("dialog-heading")}>
+            <div>
+              <p className={ui("eyebrow")}>{job ? "EDIT SCHEDULE" : "NEW SCHEDULE"}</p>
+              <h2>{job ? t("编辑调度") : t("新建调度")}</h2>
+            </div>
+            <IconButton type="button" label={t("关闭调度编辑")} onClick={onClose}><X size={20} /></IconButton>
           </div>
-          <IconButton type="button" label={t("关闭调度编辑")} onClick={onClose}><X size={20} /></IconButton>
-        </div>
-        {error !== null && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <label className={ui("field")}>
-          <span>{t("名称")}</span>
-          <input value={value.name} onChange={(event) => patch("name", event.target.value)} required />
-        </label>
-        <div className={ui("field-row")}>
+          {error !== null && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <label className={ui("field")}>
-            <span>{t("Cron 表达式")}</span>
-            <input
-              className={ui("mono")}
-              value={value.cronExpression}
-              onChange={(event) => patch("cronExpression", event.target.value)}
-              required
+            <span>{t("名称")}</span>
+            <input value={value.name} onChange={(event) => patch("name", event.target.value)} required />
+          </label>
+          <div className={ui("field-row")}>
+            <label className={ui("field")}>
+              <span>{t("Cron 表达式")}</span>
+              <input
+                className={ui("mono")}
+                value={value.cronExpression}
+                onChange={(event) => patch("cronExpression", event.target.value)}
+                required
+              />
+              <small>{humanCron(value.cronExpression, value.timezone)}</small>
+            </label>
+            <label className={ui("field")}>
+              <span>{t("IANA 时区")}</span>
+              <input value={value.timezone} onChange={(event) => patch("timezone", event.target.value)} required />
+            </label>
+          </div>
+          <label className={ui("field")}>
+            <span>{t("工作目录")}</span>
+            <input value={value.cwd} onChange={(event) => patch("cwd", event.target.value)} placeholder="/home/user/project" required />
+          </label>
+          <label className={ui("field")}>
+            <span>{t("Pi 指令")}</span>
+            <textarea rows={5} value={value.prompt} onChange={(event) => patch("prompt", event.target.value)} required />
+          </label>
+          <div className={ui("field-row three")}>
+            <label className={ui("field")}>
+              <span>{t("模型")}</span>
+              <input
+                value={value.model ?? ""}
+                onChange={(event) => patch("model", event.target.value || null)}
+                placeholder={t("使用默认值")}
+              />
+            </label>
+            <label className={ui("field")}>
+              <span>{t("思考级别")}</span>
+              <select
+                value={value.thinkingLevel ?? ""}
+                onChange={(event) =>
+                  patch("thinkingLevel", (event.target.value || null) as ThinkingLevel | null)
+                }
+              >
+                <option value="">{t("默认")}</option>
+                {["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((level) => (
+                  <option key={level}>{level}</option>
+                ))}
+              </select>
+            </label>
+            <label className={ui("field")}>
+              <span>{t("超时（秒）")}</span>
+              <input
+                type="number"
+                min={60}
+                max={86400}
+                value={value.timeoutSeconds}
+                onChange={(event) => patch("timeoutSeconds", Number(event.target.value))}
+              />
+            </label>
+          </div>
+          <div className={ui("switch-setting-row")}>
+            <span>
+              <strong>{t("创建后立即启用")}</strong>
+              <small>{t("重叠运行默认跳过，不会自动重试。")}</small>
+            </span>
+            <Switch
+              label={t("创建后立即启用")}
+              checked={value.enabled}
+              onClick={() => patch("enabled", !value.enabled)}
             />
-            <small>{humanCron(value.cronExpression, value.timezone)}</small>
-          </label>
-          <label className={ui("field")}>
-            <span>{t("IANA 时区")}</span>
-            <input value={value.timezone} onChange={(event) => patch("timezone", event.target.value)} required />
-          </label>
-        </div>
-        <label className={ui("field")}>
-          <span>{t("工作目录")}</span>
-          <input value={value.cwd} onChange={(event) => patch("cwd", event.target.value)} placeholder="/home/user/project" required />
-        </label>
-        <label className={ui("field")}>
-          <span>{t("Pi 指令")}</span>
-          <textarea rows={5} value={value.prompt} onChange={(event) => patch("prompt", event.target.value)} required />
-        </label>
-        <div className={ui("field-row three")}>
-          <label className={ui("field")}>
-            <span>{t("模型")}</span>
-            <input
-              value={value.model ?? ""}
-              onChange={(event) => patch("model", event.target.value || null)}
-              placeholder={t("使用默认值")}
-            />
-          </label>
-          <label className={ui("field")}>
-            <span>{t("思考级别")}</span>
-            <select
-              value={value.thinkingLevel ?? ""}
-              onChange={(event) =>
-                patch("thinkingLevel", (event.target.value || null) as ThinkingLevel | null)
-              }
-            >
-              <option value="">{t("默认")}</option>
-              {["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((level) => (
-                <option key={level}>{level}</option>
-              ))}
-            </select>
-          </label>
-          <label className={ui("field")}>
-            <span>{t("超时（秒）")}</span>
-            <input
-              type="number"
-              min={60}
-              max={86400}
-              value={value.timeoutSeconds}
-              onChange={(event) => patch("timeoutSeconds", Number(event.target.value))}
-            />
-          </label>
-        </div>
-        <div className={ui("switch-setting-row")}>
-          <span>
-            <strong>{t("创建后立即启用")}</strong>
-            <small>{t("重叠运行默认跳过，不会自动重试。")}</small>
-          </span>
-          <Switch
-            label={t("创建后立即启用")}
-            checked={value.enabled}
-            onClick={() => patch("enabled", !value.enabled)}
-          />
+          </div>
         </div>
         <div className={ui("dialog-actions")}>
           <Button type="button" variant="secondary" onClick={onClose}>{t("取消")}</Button>

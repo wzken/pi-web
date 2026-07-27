@@ -256,7 +256,27 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await page.getByLabel("IANA 时区").fill("UTC");
   await page.getByLabel("工作目录").fill(workspace);
   await page.getByLabel("Pi 指令").fill(`scheduled smoke ${suffix}`);
-  await page.getByRole("button", { name: "保存调度" }).click();
+  const saveSchedule = page.getByRole("button", { name: "保存调度" });
+  const scheduleActionLayout = await saveSchedule.evaluate((button) => {
+    const buttonRect = button.getBoundingClientRect();
+    const visualViewport = window.visualViewport;
+    const viewportTop = visualViewport?.offsetTop ?? 0;
+    const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
+    const hitTarget = document.elementFromPoint(
+      buttonRect.left + buttonRect.width / 2,
+      buttonRect.top + buttonRect.height / 2
+    );
+    return {
+      insideVisualViewport:
+        buttonRect.top >= viewportTop && buttonRect.bottom <= viewportBottom,
+      receivesPointer: hitTarget === button || button.contains(hitTarget)
+    };
+  });
+  expect(scheduleActionLayout).toEqual({
+    insideVisualViewport: true,
+    receivesPointer: true
+  });
+  await saveSchedule.click();
   const card = page.locator("article", { hasText: scheduleName });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: `更多调度操作 ${scheduleName}` }).click();
