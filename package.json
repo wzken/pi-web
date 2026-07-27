@@ -38,7 +38,7 @@
     "clean": "pnpm -r run clean && node -e \"for (const path of ['playwright-report','test-results','coverage','.runtime/playwright-report','.runtime/test-results','.runtime/e2e','.runtime/vite-cache']) require('fs').rmSync(path,{recursive:true,force:true})\""
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.55.0",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^4.0.0",
