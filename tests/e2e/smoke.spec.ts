@@ -276,7 +276,17 @@ test("authenticates, runs a durable session, browses files, and schedules work",
     insideVisualViewport: true,
     receivesPointer: true
   });
-  await saveSchedule.click();
+  const saveScheduleBounds = await saveSchedule.boundingBox();
+  expect(saveScheduleBounds).not.toBeNull();
+  const saveSchedulePoint = {
+    x: saveScheduleBounds!.x + saveScheduleBounds!.width / 2,
+    y: saveScheduleBounds!.y + saveScheduleBounds!.height / 2
+  };
+  if (testInfo.project.name === "mobile") {
+    await page.touchscreen.tap(saveSchedulePoint.x, saveSchedulePoint.y);
+  } else {
+    await page.mouse.click(saveSchedulePoint.x, saveSchedulePoint.y);
+  }
   const card = page.locator("article", { hasText: scheduleName });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: `更多调度操作 ${scheduleName}` }).click();
