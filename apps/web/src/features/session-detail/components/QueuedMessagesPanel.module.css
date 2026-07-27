@@ -1,0 +1,65 @@
+.root {
+  display: grid;
+  width: min(var(--workbench-content), 100%);
+  gap: 5px;
+  margin-inline: auto;
+  margin-bottom: 7px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--teal) 4%, var(--panel-2));
+}
+
+.root > header,
+.message {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.root > header {
+  gap: 5px;
+  color: var(--text-soft);
+  font-size: 8px;
+}
+
+.root > header > span {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+  font-family: var(--font-mono);
+}
+
+.list {
+  display: grid;
+  gap: 3px;
+}
+
+.message {
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 8px;
+}
+
+.kind {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+}
+
+.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.steer .kind {
+  color: var(--amber);
+}
+
+.followUp .kind {
+  color: var(--teal);
+}

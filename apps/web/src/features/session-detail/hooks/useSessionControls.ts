@@ -1,0 +1,130 @@
+import type {
+  SessionSnapshot,
+  SessionStatus
+} from "@pi-web/protocol";
+import { useCallback, useRef, type Dispatch } from "react";
+import { api, jsonBody } from "../../../api";
+import { useToast } from "../../../components";
+import type { RetryablePrompt } from "../../../session-messages";
+import type {
+  SessionControlAction,
+  SessionDetailAction
+} from "../types";
+import { safeFileName } from "../utils/session-formatting";
+import { t } from "../../../i18n";
+
+interface UseSessionControlsOptions {
+  sessionId: string;
+  snapshot: SessionSnapshot | null;
+  dispatch: Dispatch<SessionDetailAction>;
+  refresh: () => Promise<boolean>;
+}
+
+export function useSessionControls({
+  sessionId,
+  snapshot,
+  dispatch,
+  refresh
+}: UseSessionControlsOptions) {
+  const toast = useToast();
+  const controlInFlight = useRef(false);
+  const replayInFlight = useRef(false);
+
+  const control = useCallback(
+    async (action: SessionControlAction): Promise<boolean> => {
+      if (controlInFlight.current) return false;
+      controlInFlight.current = true;
+      dispatch({ type: "controlBusy.set", action });
+      dispatch({ type: "error.set", error: null });
+      try {
+        await api(`/api/sessions/${sessionId}/${action}`, {
+          method: "POST",
+          ...jsonBody({})
+        });
+        toast.push(
+          action === "abort"
+            ? t("已请求中止当前轮次")
+            : action === "resume"
+              ? t("正在恢复 Pi Worker")
+              : t("会话 Worker 已关闭")
+        );
+        await refresh();
+        return true;
+      } catch (error) {
+        dispatch({ type: "error.set", error });
+        return false;
+      } finally {
+        controlInFlight.current = false;
+        dispatch({ type: "controlBusy.set", action: null });
+      }
+    },
+    [dispatch, refresh, sessionId, toast]
+  );
+
+  const replayLastPrompt = useCallback(
+    async (prompt: RetryablePrompt, status: SessionStatus) => {
+      if (replayInFlight.current) return;
+      const imageNote =
+        prompt.images.length > 0
+          ? t("，并重新发送 {{count}} 张图片", {
+              count: prompt.images.length
+            })
+          : "";
+      if (
+        !window.confirm(
+          t("这会再次执行最后一条用户指令{{imageNote}}，可能重复修改文件或运行命令。继续吗？", {
+            imageNote
+          })
+        )
+      ) {
+        return;
+      }
+      replayInFlight.current = true;
+      dispatch({ type: "replayBusy.set", busy: true });
+      dispatch({ type: "error.set", error: null });
+      try {
+        const waiting = status === "waiting";
+        await api(
+          waiting
+            ? `/api/sessions/${sessionId}/messages`
+            : `/api/sessions/${sessionId}/resume`,
+          {
+            method: "POST",
+            ...jsonBody(
+              waiting
+                ? { ...prompt, behavior: "prompt" }
+                : { prompt: prompt.message, images: prompt.images }
+            )
+          }
+        );
+        dispatch({
+          type: "session.status",
+          status: waiting ? "running" : "starting"
+        });
+        toast.push(t("最后一条指令已重新发送"));
+      } catch (error) {
+        dispatch({ type: "error.set", error });
+      } finally {
+        replayInFlight.current = false;
+        dispatch({ type: "replayBusy.set", busy: false });
+      }
+    },
+    [dispatch, sessionId, toast]
+  );
+
+  const exportSession = useCallback(() => {
+    if (!snapshot) return;
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeFileName(snapshot.session.displayName)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.push(t("会话快照已导出"));
+  }, [snapshot, toast]);
+
+  return { control, replayLastPrompt, exportSession };
+}

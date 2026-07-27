@@ -1,0 +1,14 @@
+[Unit]
+Description=Pi Web session daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@NODE@ @PI_WEB_CLI@ sessiond
+Restart=on-failure
+RestartSec=2
+UMask=0077
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

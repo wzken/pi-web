@@ -1,0 +1,15 @@
+[Unit]
+Description=Pi Web web server
+Requires=pi-web-sessiond.service
+After=network.target pi-web-sessiond.service
+
+[Service]
+Type=simple
+ExecStart=@NODE@ @PI_WEB_CLI@ server
+Restart=on-failure
+RestartSec=2
+UMask=0077
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

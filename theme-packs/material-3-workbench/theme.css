@@ -1,0 +1,283 @@
+html[data-theme-id="material-3-workbench"] {
+  --m3-primary: #6750a4;
+  --m3-on-primary: #ffffff;
+  --m3-primary-container: #eaddff;
+  --m3-on-primary-container: #21005d;
+  --m3-secondary-container: #e8def8;
+  --m3-on-secondary-container: #4f378b;
+  --m3-state-hover: #d0bcff;
+  --m3-glow: rgb(103 80 164 / 10%);
+  color-scheme: light dark;
+}
+
+html[data-theme-id="material-3-workbench"][data-color-mode="dark"] {
+  --m3-primary: #d0bcff;
+  --m3-on-primary: #381e72;
+  --m3-primary-container: #4f378b;
+  --m3-on-primary-container: #eaddff;
+  --m3-secondary-container: #4a4458;
+  --m3-on-secondary-container: #e8def8;
+  --m3-state-hover: #633b8f;
+  --m3-glow: rgb(208 188 255 / 12%);
+}
+
+html[data-theme-id="material-3-workbench"] body {
+  background:
+    radial-gradient(circle at 82% 4%, var(--m3-glow), transparent 28rem),
+    var(--bg);
+}
+
+html[data-theme-id="material-3-workbench"] .sidebar,
+html[data-theme-id="material-3-workbench"] .workbench-session-rail,
+html[data-theme-id="material-3-workbench"] .file-pane {
+  border-color: transparent;
+  background: var(--panel-2);
+}
+
+html[data-theme-id="material-3-workbench"] .mobile-header,
+html[data-theme-id="material-3-workbench"] .workbench-topbar,
+html[data-theme-id="material-3-workbench"] .session-header {
+  border-color: var(--line-soft);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+html[data-theme-id="material-3-workbench"] .brand-mark,
+html[data-theme-id="material-3-workbench"] .metric-icon,
+html[data-theme-id="material-3-workbench"] .row-avatar,
+html[data-theme-id="material-3-workbench"] .message-avatar {
+  border-color: transparent;
+  border-radius: 14px;
+  color: var(--violet);
+  background: var(--panel-3);
+}
+
+html[data-theme-id="material-3-workbench"] .nav-link,
+html[data-theme-id="material-3-workbench"] .session-nav-row,
+html[data-theme-id="material-3-workbench"] .file-row {
+  border-radius: 999px;
+}
+
+html[data-theme-id="material-3-workbench"] .nav-link.active,
+html[data-theme-id="material-3-workbench"] .session-nav-row.is-active {
+  border-color: transparent;
+  color: var(--m3-on-primary-container);
+  background: var(--m3-primary-container);
+  box-shadow: none;
+}
+
+html[data-theme-id="material-3-workbench"] .nav-link.active::before {
+  display: none;
+}
+
+html[data-theme-id="material-3-workbench"] .panel,
+html[data-theme-id="material-3-workbench"] .session-card,
+html[data-theme-id="material-3-workbench"] .schedule-card,
+html[data-theme-id="material-3-workbench"] .toolbar,
+html[data-theme-id="material-3-workbench"] .dialog,
+html[data-theme-id="material-3-workbench"] .theme-choice,
+html[data-theme-id="material-3-workbench"] .background-preview,
+html[data-theme-id="material-3-workbench"] .composer-box {
+  border-color: transparent;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+html[data-theme-id="material-3-workbench"] .metric-card,
+html[data-theme-id="material-3-workbench"] .session-card {
+  border-color: transparent;
+  border-radius: 20px;
+  background: var(--panel);
+}
+
+html[data-theme-id="material-3-workbench"] .panel-heading,
+html[data-theme-id="material-3-workbench"] .session-row,
+html[data-theme-id="material-3-workbench"] .timeline-row,
+html[data-theme-id="material-3-workbench"] .file-header,
+html[data-theme-id="material-3-workbench"] .file-root,
+html[data-theme-id="material-3-workbench"] .breadcrumbs {
+  border-color: var(--line-soft);
+}
+
+html[data-theme-id="material-3-workbench"] .button {
+  min-height: 40px;
+  border-radius: 999px;
+  padding-inline: 18px;
+  letter-spacing: 0.01em;
+}
+
+html[data-theme-id="material-3-workbench"] .button-icon,
+html[data-theme-id="material-3-workbench"] .icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+html[data-theme-id="material-3-workbench"] .button-primary {
+  border-color: transparent;
+  color: var(--m3-on-primary);
+  background: var(--m3-primary);
+  box-shadow: 0 1px 3px rgb(29 27 32 / 24%);
+}
+
+html[data-theme-id="material-3-workbench"] .button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--m3-primary) 88%, var(--panel));
+  box-shadow: 0 2px 6px rgb(29 27 32 / 24%);
+  transform: none;
+}
+
+html[data-theme-id="material-3-workbench"] .button-secondary,
+html[data-theme-id="material-3-workbench"] .button-toolbar,
+html[data-theme-id="material-3-workbench"] .icon-button {
+  border-color: transparent;
+  color: var(--m3-on-secondary-container);
+  background: var(--m3-secondary-container);
+}
+
+html[data-theme-id="material-3-workbench"] .button-outline {
+  border-color: var(--line);
+  color: var(--m3-primary);
+  background: transparent;
+}
+
+html[data-theme-id="material-3-workbench"] .button-ghost:hover:not(:disabled),
+html[data-theme-id="material-3-workbench"] .button-secondary:hover:not(:disabled),
+html[data-theme-id="material-3-workbench"] .icon-button:hover:not(:disabled) {
+  color: var(--m3-on-primary-container);
+  background: var(--m3-state-hover);
+  transform: none;
+}
+
+html[data-theme-id="material-3-workbench"] .workbench-topbar .button,
+html[data-theme-id="material-3-workbench"] .session-header .button {
+  min-height: 32px;
+  padding-inline: 10px;
+}
+
+html[data-theme-id="material-3-workbench"] .workbench-rail-footer .button {
+  min-width: 0;
+  min-height: 40px;
+  padding-inline: 4px;
+}
+
+html[data-theme-id="material-3-workbench"] .workbench-rail-footer .button span {
+  white-space: nowrap;
+}
+
+html[data-theme-id="material-3-workbench"] .terminal-actions .button,
+html[data-theme-id="material-3-workbench"] .terminal-actions .icon-button {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+
+html[data-theme-id="material-3-workbench"] input,
+html[data-theme-id="material-3-workbench"] select,
+html[data-theme-id="material-3-workbench"] textarea,
+html[data-theme-id="material-3-workbench"] .search-box {
+  border-color: var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+html[data-theme-id="material-3-workbench"] .status-pill {
+  border-color: transparent;
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+
+html[data-theme-id="material-3-workbench"] .home-start,
+html[data-theme-id="material-3-workbench"] .conversation-pane,
+html[data-theme-id="material-3-workbench"] .message-area,
+html[data-theme-id="material-3-workbench"] .composer,
+html[data-theme-id="material-3-workbench"] .file-list,
+html[data-theme-id="material-3-workbench"] .file-preview {
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+
+html[data-theme-id="material-3-workbench"] .message.assistant .message-avatar {
+  color: var(--m3-on-primary);
+  background: var(--m3-primary);
+}
+
+html[data-theme-id="material-3-workbench"] .markdown code {
+  color: var(--m3-on-secondary-container);
+  background: var(--m3-secondary-container);
+}
+
+html[data-theme-id="material-3-workbench"] .terminal-panel {
+  border-color: var(--line);
+  border-radius: 18px 18px 0 0;
+  background: var(--panel);
+  box-shadow: 0 -2px 12px rgb(29 27 32 / 12%);
+}
+
+html[data-theme-id="material-3-workbench"] .terminal-panel > header,
+html[data-theme-id="material-3-workbench"] .terminal-meta {
+  border-color: var(--line-soft);
+  color: var(--text-soft);
+  background: var(--panel-2);
+}
+
+html[data-theme-id="material-3-workbench"] .terminal-viewport {
+  background: var(--panel);
+}
+
+html[data-theme-id="material-3-workbench"] .login-page {
+  background: var(--bg);
+}
+
+html[data-theme-id="material-3-workbench"] .login-intro {
+  border-color: transparent;
+  border-radius: 0 36px 36px 0;
+  color: var(--m3-on-primary);
+  background:
+    radial-gradient(circle at 28% 72%, rgb(255 255 255 / 18%), transparent 22rem),
+    var(--m3-primary);
+}
+
+html[data-theme-id="material-3-workbench"] .login-intro .login-logo,
+html[data-theme-id="material-3-workbench"] .login-intro .eyebrow {
+  color: var(--m3-on-primary);
+}
+
+html[data-theme-id="material-3-workbench"] .login-intro .login-copy > p:last-child,
+html[data-theme-id="material-3-workbench"] .login-intro .login-runtime small {
+  color: color-mix(in srgb, var(--m3-on-primary) 82%, transparent);
+}
+
+html[data-theme-id="material-3-workbench"] .login-panel,
+html[data-theme-id="material-3-workbench"] .login-card {
+  background: var(--panel);
+}
+
+html[data-theme-id="material-3-workbench"] *:focus-visible {
+  outline-color: var(--m3-primary);
+}
+
+@media (max-width: 760px) {
+  html[data-theme-id="material-3-workbench"] .button {
+    min-height: 44px;
+  }
+
+  html[data-theme-id="material-3-workbench"] .session-header > .button,
+  html[data-theme-id="material-3-workbench"] .session-header > .tooltip .button,
+  html[data-theme-id="material-3-workbench"] .session-controls .button {
+    width: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+  }
+
+  html[data-theme-id="material-3-workbench"] .session-title {
+    min-width: 0;
+    margin-left: 3px;
+  }
+
+  html[data-theme-id="material-3-workbench"] .terminal-panel {
+    border-radius: 18px 18px 0 0;
+  }
+}

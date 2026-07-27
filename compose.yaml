@@ -1,0 +1,43 @@
+name: pi-web
+
+services:
+  pi-web:
+    image: pi-web:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PI_WEB_BIND_ADDRESS:-127.0.0.1}:${PI_WEB_PORT:-8787}:8787"
+    environment:
+      PI_WEB_HOST: "0.0.0.0"
+      PI_WEB_PORT: "8787"
+      PI_WEB_CONFIG_DIR: "/data/config"
+      PI_WEB_DATA_DIR: "/data/state"
+      PI_WEB_CACHE_DIR: "/data/cache"
+      PI_WEB_ALLOWED_ROOTS: "/home/pi"
+      PI_WEB_PI_EXECUTABLE: "/usr/local/bin/pi"
+      PI_WEB_WEB_ROOT: "/app/web"
+    volumes:
+      - type: bind
+        source: ./.runtime/docker/data
+        target: /data
+      - type: bind
+        source: ./.runtime/docker/pi
+        target: /home/node/.pi
+      - type: bind
+        source: ./workspaces
+        target: /home/pi
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true

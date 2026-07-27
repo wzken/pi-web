@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+minimumReleaseAge: 1440
+allowBuilds:
+  '@google/genai': false
+  esbuild: true
+  node-pty: true
+  protobufjs: false
+minimumReleaseAgeExclude:
+  - '@earendil-works/pi-agent-core@0.82.0'
+  - '@earendil-works/pi-ai@0.82.0'
+  - '@earendil-works/pi-coding-agent@0.82.0'
+  - '@earendil-works/pi-tui@0.82.0'

@@ -1,0 +1,18 @@
+{
+  "name": "@pi-web/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@pi-web/config": "workspace:*",
+    "@pi-web/server": "workspace:*",
+    "@pi-web/sessiond": "workspace:*",
+    "@pi-web/shared": "workspace:*"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "@pi-web/pi-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single-user, self-hosted web runtime for Pi Coding Agent",
+  "license": "MIT",
+  "keywords": [
+    "pi-coding-agent",
+    "self-hosted",
+    "agent",
+    "scheduler",
+    "pwa"
+  ],
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "pi-web": "apps/cli/dist/index.js"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter \"{packages/**}\" build && pnpm -r --filter \"{apps/**}\" build",
+    "dev": "pnpm --parallel --filter @pi-web/sessiond --filter @pi-web/server --filter @pi-web/web dev",
+    "dev:sessiond": "pnpm --filter @pi-web/sessiond dev",
+    "dev:server": "pnpm --filter @pi-web/server dev",
+    "dev:web": "pnpm --filter @pi-web/web dev",
+    "pi-web": "node apps/cli/dist/index.js",
+    "lint": "eslint .",
+    "lint:a11y": "eslint --config eslint.a11y.config.mjs \"apps/web/src/**/*.{ts,tsx}\"",
+    "lint:css-modules": "node scripts/check-css-modules.mjs",
+    "lint:i18n": "node scripts/check-i18n.mjs",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "pnpm build && playwright test",
+    "verify": "pnpm lint && pnpm lint:a11y && pnpm lint:css-modules && pnpm lint:i18n && pnpm typecheck && pnpm test && pnpm build",
+    "clean": "pnpm -r run clean && node -e \"for (const path of ['playwright-report','test-results','coverage','.runtime/playwright-report','.runtime/test-results','.runtime/e2e','.runtime/vite-cache']) require('fs').rmSync(path,{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.0.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.0.0"
+  }
+}
