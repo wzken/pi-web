@@ -148,7 +148,7 @@ export async function callScheduler(
           }
         })}\n`,
         (error) => {
-          if (error) fail(error);
+          if (error) fail(normalizeConnectionCloseError(error));
         }
       );
     });
@@ -195,7 +195,7 @@ export async function callScheduler(
       }
     });
     socket.on("error", (error) => {
-      fail(error);
+      fail(normalizeConnectionCloseError(error));
     });
     socket.on("end", () => {
       fail(new Error("Scheduler connection ended before a response"));
@@ -205,5 +205,13 @@ export async function callScheduler(
     });
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
+  });
+}
+
+function normalizeConnectionCloseError(error: Error & { code?: string }): Error {
+  if (error.code !== "EPIPE" && error.code !== "ECONNRESET") return error;
+
+  return new Error("Scheduler connection closed before a response", {
+    cause: error
   });
 }
