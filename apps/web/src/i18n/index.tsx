@@ -309,6 +309,7 @@ const englishMessages: Record<string, string> = {
   "管理模型和运行时": "Manage models and runtime",
   "打开设置": "Open settings",
   "调整界面与系统选项": "Adjust interface and system options",
+  "打开命令面板": "Open command palette",
   "命令面板": "Command palette",
   "搜索页面或最近会话…": "Search pages or recent sessions…",
   "没有匹配的页面或最近会话": "No matching pages or recent sessions",

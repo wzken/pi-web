@@ -13,6 +13,7 @@ import type { FastifyInstance } from "fastify";
 import {
   themeManifestSchema,
   themePreferencesSchema,
+  defaultThemeMaterialSettings,
   type InstalledTheme,
   type ThemeCatalog,
   type ThemeManifest,
@@ -52,6 +53,11 @@ const defaultPreferences: ThemePreferences = {
     position: "center",
     overlay: 0.18,
     blur: 0
+  },
+  materialTheme: {
+    enabled: defaultThemeMaterialSettings.enabled,
+    colors: { ...defaultThemeMaterialSettings.colors },
+    presetId: defaultThemeMaterialSettings.presetId
   }
 };
 
@@ -230,8 +236,13 @@ export class ThemeService {
   }
 
   async updatePreferences(input: unknown): Promise<ThemeCatalog> {
-    const preferences = themePreferencesSchema.parse(input);
     const themes = [...builtinThemes, ...(await this.readUploadedThemes())];
+    const current = await this.readPreferences(themes);
+    const preferences = themePreferencesSchema.parse(
+      isPreferenceObject(input) && !("materialTheme" in input)
+        ? { ...input, materialTheme: current.materialTheme }
+        : input
+    );
     if (!themes.some((theme) => theme.id === preferences.themeId)) {
       throw new PiWebError("THEME_NOT_FOUND", "Selected theme is not installed", 404);
     }
@@ -527,6 +538,10 @@ export class ThemeService {
         }
       : {};
   }
+}
+
+function isPreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toInstalledTheme(

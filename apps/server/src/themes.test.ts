@@ -24,6 +24,16 @@ describe("ThemeService", () => {
     const catalog = await service.catalog();
     expect(catalog.preferences.themeId).toBe("pi-neutral");
     expect(catalog.preferences.colorMode).toBe("system");
+    expect(catalog.preferences.materialTheme).toEqual({
+      enabled: false,
+      colors: {
+        primary: "#54545B",
+        secondary: "#69656C",
+        tertiary: "#5D6765",
+        neutral: "#77777A"
+      },
+      presetId: "graphite"
+    });
     expect(catalog.themes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -37,6 +47,108 @@ describe("ThemeService", () => {
         })
       ])
     );
+  });
+
+  it("adds neutral material settings when reading a legacy appearance document", async () => {
+    await mkdir(join(root, "config"), { recursive: true });
+    await writeFile(
+      join(root, "config", "appearance.json"),
+      JSON.stringify({
+        themeId: "pi-neutral",
+        colorMode: "dark",
+        background: {
+          kind: "none",
+          url: "",
+          fit: "cover",
+          position: "center",
+          overlay: 0.18,
+          blur: 0
+        }
+      }),
+      "utf8"
+    );
+
+    const catalog = await service.catalog();
+
+    expect(catalog.preferences).toMatchObject({
+      themeId: "pi-neutral",
+      colorMode: "dark",
+      materialTheme: {
+        enabled: false,
+        colors: { primary: "#54545B", neutral: "#77777A" },
+        presetId: "graphite"
+      }
+    });
+  });
+
+  it("persists shared four-role material theme settings", async () => {
+    const current = await service.catalog();
+    const updated = await service.updatePreferences({
+      ...current.preferences,
+      materialTheme: {
+        enabled: true,
+        colors: {
+          primary: "#1a2b3c",
+          secondary: "#4d5e6f",
+          tertiary: "#708192",
+          neutral: "#a3b4c5"
+        },
+        presetId: null
+      }
+    });
+
+    expect(updated.preferences.materialTheme).toEqual({
+      enabled: true,
+      colors: {
+        primary: "#1A2B3C",
+        secondary: "#4D5E6F",
+        tertiary: "#708192",
+        neutral: "#A3B4C5"
+      },
+      presetId: null
+    });
+    expect(
+      JSON.parse(
+        await readFile(join(root, "config", "appearance.json"), "utf8")
+      )
+    ).toMatchObject({ materialTheme: updated.preferences.materialTheme });
+  });
+
+  it("preserves shared material settings when a legacy client omits them", async () => {
+    const current = await service.catalog();
+    const customized = await service.updatePreferences({
+      ...current.preferences,
+      materialTheme: {
+        enabled: true,
+        colors: {
+          primary: "#123456",
+          secondary: "#654321",
+          tertiary: "#336699",
+          neutral: "#777777"
+        },
+        presetId: null
+      }
+    });
+    const legacyPreferences = {
+      themeId: customized.preferences.themeId,
+      colorMode: customized.preferences.colorMode,
+      background: customized.preferences.background
+    };
+
+    const updated = await service.updatePreferences({
+      ...legacyPreferences,
+      colorMode: "dark"
+    });
+
+    expect(updated.preferences.colorMode).toBe("dark");
+    expect(updated.preferences.materialTheme).toEqual(
+      customized.preferences.materialTheme
+    );
+    expect(
+      JSON.parse(
+        await readFile(join(root, "config", "appearance.json"), "utf8")
+      )
+    ).toMatchObject({ materialTheme: customized.preferences.materialTheme });
   });
 
   it("installs a declarative ZIP and persists the active theme", async () => {

@@ -89,7 +89,6 @@ export function ThemeSettings() {
     previewPreferences,
     updatePreferences,
     previewMaterialThemeSettings,
-    applyMaterialThemeSettings,
     uploadBackground,
     removeBackground
   } = useTheme();
@@ -186,13 +185,13 @@ export function ThemeSettings() {
         ...catalog.preferences,
         themeId: draftThemeId,
         colorMode: draftMode,
-        background: draftBackground
+        background: draftBackground,
+        materialTheme: draftMaterial
       });
-      applyMaterialThemeSettings(draftMaterial);
       setDraftThemeId(next.preferences.themeId);
       setDraftMode(next.preferences.colorMode);
       setDraftBackground(next.preferences.background);
-      setDraftMaterial(draftMaterial);
+      setDraftMaterial(next.preferences.materialTheme);
       toast.push(t("外观已应用"));
     } catch (reason) {
       setError(reason);

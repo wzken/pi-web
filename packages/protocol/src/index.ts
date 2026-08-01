@@ -532,6 +532,45 @@ export const themeManifestSchema = z.discriminatedUnion("schemaVersion", [
 ]);
 export type ThemeManifest = z.infer<typeof themeManifestSchema>;
 
+export const defaultThemeMaterialSettings = {
+  enabled: false,
+  colors: {
+    primary: "#54545B",
+    secondary: "#69656C",
+    tertiary: "#5D6765",
+    neutral: "#77777A"
+  },
+  presetId: "graphite"
+} as const;
+
+const themeSeedColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#[\da-f]{6}$/i)
+  .transform((value) => value.toUpperCase());
+
+export const themeMaterialSettingsSchema = z
+  .object({
+    enabled: z.boolean().default(defaultThemeMaterialSettings.enabled),
+    colors: z
+      .object({
+        primary: themeSeedColorSchema,
+        secondary: themeSeedColorSchema,
+        tertiary: themeSeedColorSchema,
+        neutral: themeSeedColorSchema
+      })
+      .default({ ...defaultThemeMaterialSettings.colors }),
+    presetId: z.string().trim().min(1).max(64).nullable().default(
+      defaultThemeMaterialSettings.presetId
+    )
+  })
+  .default({
+    enabled: defaultThemeMaterialSettings.enabled,
+    colors: { ...defaultThemeMaterialSettings.colors },
+    presetId: defaultThemeMaterialSettings.presetId
+  });
+export type ThemeMaterialSettings = z.infer<typeof themeMaterialSettingsSchema>;
+
 export const themePreferencesSchema = z.object({
   themeId: z.string().trim().min(1).max(64),
   colorMode: z.enum(["system", "light", "dark"]).default("system"),
@@ -551,7 +590,11 @@ export const themePreferencesSchema = z.object({
       position: "center",
       overlay: 0.18,
       blur: 0
-    })
+    }),
+  // Kept with the server-owned appearance document so all operator browsers
+  // resolve the same four MD3 seed roles. Older appearance files omit it and
+  // receive the neutral default through the schema above.
+  materialTheme: themeMaterialSettingsSchema
 });
 export type ThemePreferences = z.infer<typeof themePreferencesSchema>;
 

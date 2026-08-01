@@ -3,6 +3,7 @@ import { jobInputSchema, type ScheduledJob, type SessionRecord } from "@pi-web/p
 import { nowIso, PiWebError, safeErrorMessage } from "@pi-web/shared";
 import { SessionDatabase } from "./database.js";
 import { humanizeCron, nextOccurrence, validateSchedule } from "./cron.js";
+import { PiManager } from "./pi-manager.js";
 import { SessionSupervisor } from "./supervisor.js";
 
 interface ActiveTimer {
@@ -13,6 +14,7 @@ interface ActiveTimer {
 export class Scheduler {
   readonly #db: SessionDatabase;
   readonly #supervisor: SessionSupervisor;
+  readonly #piManager: PiManager;
   #config: PiWebConfig;
   #tickTimer: NodeJS.Timeout | null = null;
   readonly #activeTimers = new Map<string, ActiveTimer>();
@@ -29,10 +31,12 @@ export class Scheduler {
   constructor(
     db: SessionDatabase,
     supervisor: SessionSupervisor,
+    piManager: PiManager,
     config: PiWebConfig
   ) {
     this.#db = db;
     this.#supervisor = supervisor;
+    this.#piManager = piManager;
     this.#config = config;
     supervisor.on("status", this.#handleSupervisorStatus);
   }
@@ -132,6 +136,7 @@ export class Scheduler {
       throw new PiWebError("JOB_LIMIT", "Schedule limit reached", 429);
     }
     const validated = await validateSchedule(raw, this.#config);
+    await this.#assertModelExists(validated.input.model);
     const input =
       meta.actor === "model" &&
       this.#config.modelSchedulePolicy === "create_disabled"
@@ -164,6 +169,7 @@ export class Scheduler {
     this.#assertModelOwnership(current, actor, sourceSessionId);
     const merged = jobInputSchema.parse({ ...current, ...(raw as object) });
     const validated = await validateSchedule(merged, this.#config);
+    await this.#assertModelExists(validated.input.model);
     const job = this.#db.updateJob(
       id,
       validated.input,
@@ -425,6 +431,24 @@ export class Scheduler {
         "MODEL_JOB_SCOPE",
         "A model may only modify schedules created from this session",
         403
+      );
+    }
+  }
+
+  async #assertModelExists(model: string | null): Promise<void> {
+    if (!model) return;
+    const exists = await this.#piManager.modelExists(model).catch((error) => {
+      throw new PiWebError(
+        "PI_MODEL_CHECK_FAILED",
+        `Could not verify the selected Pi model: ${safeErrorMessage(error)}`,
+        503
+      );
+    });
+    if (!exists) {
+      throw new PiWebError(
+        "MODEL_NOT_FOUND",
+        `Pi does not report the model ${model}`,
+        400
       );
     }
   }

@@ -94,7 +94,16 @@ test("authenticates, runs a durable session, browses files, and schedules work",
     ).toBeVisible();
   }
 
-  await page.keyboard.press("Control+K");
+  const commandButton =
+    testInfo.project.name === "mobile"
+      ? page
+          .locator(".mobile-header")
+          .getByRole("button", { name: "打开命令面板" })
+      : page
+          .locator(".sidebar-brand")
+          .getByRole("button", { name: "打开命令面板" });
+  await expect(commandButton).toBeVisible();
+  await commandButton.click();
   const commandPalette = page.getByRole("dialog", { name: "命令面板" });
   await expect(commandPalette).toBeVisible();
   await commandPalette.getByRole("combobox").fill("settings");
@@ -127,6 +136,34 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await expect(page.getByText("设置已保存")).toBeVisible();
   await page.goto("/");
   await expect(page.getByLabel("新会话任务")).toBeVisible();
+  const homeComposerBar = page.locator(".home-composer-bar");
+  await expect(homeComposerBar).toHaveCSS("display", "flex");
+  if (testInfo.project.name === "desktop") {
+    const toolsBox = await page.locator(".home-composer-tools").boundingBox();
+    const sendBox = await page
+      .getByRole("button", { name: "创建会话并发送" })
+      .boundingBox();
+    expect(toolsBox).not.toBeNull();
+    expect(sendBox).not.toBeNull();
+    expect(sendBox!.x).toBeGreaterThan(toolsBox!.x + toolsBox!.width);
+  } else {
+    const composerBox = await page.locator(".home-composer").boundingBox();
+    const viewport = page.viewportSize();
+    expect(composerBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(
+      viewport!.height
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollHeight -
+            document.documentElement.clientHeight
+        )
+      )
+      .toBeLessThanOrEqual(1);
+  }
   await page.getByLabel("新会话任务").fill(homePrompt);
   await page.getByRole("button", { name: "创建会话并发送" }).click();
   await expect(page.getByRole("heading", { name: homePrompt })).toBeVisible();

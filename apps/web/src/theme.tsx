@@ -41,7 +41,6 @@ interface ThemeContextValue {
   previewPreferences(value: ThemePreferences | null): void;
   updatePreferences(value: ThemePreferences): Promise<ThemeCatalog>;
   previewMaterialThemeSettings(value: MaterialThemeSettings | null): void;
-  applyMaterialThemeSettings(value: MaterialThemeSettings): void;
   uploadBackground(file: File): Promise<ThemeCatalog>;
   removeBackground(): Promise<ThemeCatalog>;
 }
@@ -71,6 +70,9 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     void api<ThemeCatalog>("/api/themes", { signal: controller.signal })
       .then((value) => {
         setCatalog(value);
+        setMaterialThemeSettings(
+          persistMaterialThemeSettings(value.preferences.materialTheme)
+        );
       })
       .catch((reason) => {
         if (isAbortError(reason)) return;
@@ -96,6 +98,8 @@ export function ThemeProvider({ children }: PropsWithChildren) {
         event.storageArea === window.localStorage &&
         event.key === materialThemeSettingsStorageKey
       ) {
+        // Local storage mirrors the server preference so already-open tabs can
+        // update immediately; the server catalog remains the durable source.
         setMaterialThemeSettings(readMaterialThemeSettings());
         setMaterialThemePreview(null);
       }
@@ -170,6 +174,10 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       ...jsonBody(value)
     });
     setCatalog(next);
+    setMaterialThemeSettings(
+      persistMaterialThemeSettings(next.preferences.materialTheme)
+    );
+    setMaterialThemePreview(null);
     setPreferencePreview(null);
     return next;
   }, []);
@@ -183,15 +191,6 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       setMaterialThemePreview(
         value ? normalizeMaterialThemeSettings(value) : null
       );
-    },
-    []
-  );
-
-  const applyMaterialThemeSettings = useCallback(
-    (value: MaterialThemeSettings) => {
-      const next = persistMaterialThemeSettings(value);
-      setMaterialThemeSettings(next);
-      setMaterialThemePreview(null);
     },
     []
   );
@@ -226,13 +225,11 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       previewPreferences,
       updatePreferences,
       previewMaterialThemeSettings,
-      applyMaterialThemeSettings,
       uploadBackground,
       removeBackground
     }),
     [
       activeTheme,
-      applyMaterialThemeSettings,
       catalog,
       effectiveMaterialThemeSettings,
       loading,

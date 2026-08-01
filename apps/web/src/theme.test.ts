@@ -74,6 +74,16 @@ function catalog(themeId: string): ThemeCatalog {
         position: "center",
         overlay: 0.18,
         blur: 0
+      },
+      materialTheme: {
+        enabled: false,
+        colors: {
+          primary: "#54545B",
+          secondary: "#69656C",
+          tertiary: "#5D6765",
+          neutral: "#77777A"
+        },
+        presetId: "graphite"
       }
     }
   };

@@ -106,6 +106,15 @@ export class PiManager {
     }
   }
 
+  async modelExists(model: string): Promise<boolean> {
+    const models = parseModels(
+      (await this.#runGlobalCommand(["--list-models"])).stdout
+    );
+    return models.some(
+      (candidate) => `${candidate.provider}/${candidate.id}` === model
+    );
+  }
+
   async doctorProbe(): Promise<{
     available: boolean;
     version: string | null;

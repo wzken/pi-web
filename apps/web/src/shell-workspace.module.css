@@ -463,12 +463,19 @@
 
   .brand-mark {
     width: 46px;
+    min-width: 46px;
     height: 46px;
+    min-height: 46px;
     border: 0;
     border-radius: 14px;
     color: var(--lime);
     background: color-mix(in srgb, var(--lime) 18%, var(--panel-3));
     box-shadow: none;
+  }
+
+  .command-trigger:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--lime) 24%, var(--panel-3));
   }
 
   .nav-list {
@@ -739,6 +746,36 @@
     height: 40px;
     min-height: 40px;
     padding: 0;
+  }
+
+  .mobile-header {
+    grid-template-columns: 82px minmax(0, 1fr) 82px;
+  }
+
+  .mobile-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    width: 82px;
+  }
+
+  .mobile-header-actions > .button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .app-shell-workbench:not(.app-shell-session-detail) .page {
+    height: calc(100vh - var(--mobile-shell-header));
+    height: calc(100dvh - var(--mobile-shell-header));
+  }
+
+  .app-shell-workbench:not(.app-shell-session-detail) .home-workbench,
+  .app-shell-workbench:not(.app-shell-session-detail) .sessions-workbench-page {
+    height: 100%;
   }
 }
 

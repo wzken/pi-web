@@ -200,9 +200,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
     >
       <aside className={ui(`sidebar ${open ? "sidebar-open" : ""}`)}>
         <div className={ui("sidebar-brand")}>
-          <div className={ui("brand-mark")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={ui("brand-mark command-trigger")}
+            aria-label={t("打开命令面板")}
+            title={`${t("打开命令面板")} (Ctrl/⌘+K)`}
+            onClick={() => setCommandOpen(true)}
+          >
             <Command size={21} />
-          </div>
+          </Button>
           <div>
             <strong>Pi Web</strong>
             <span>PRIVATE RUNTIME</span>
@@ -262,15 +270,28 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <Menu size={22} />
           </IconButton>
           <span className={ui("mobile-title")}>Pi Web</span>
-          <ButtonLink
-            to="/settings"
-            variant="ghost"
-            size="icon"
-            aria-label={t("设置")}
-            title={t("设置")}
-          >
-            <Settings size={19} />
-          </ButtonLink>
+          <div className={ui("mobile-header-actions")}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={ui("mobile-command-trigger")}
+              aria-label={t("打开命令面板")}
+              title={t("打开命令面板")}
+              onClick={() => setCommandOpen(true)}
+            >
+              <Command size={18} />
+            </Button>
+            <ButtonLink
+              to="/settings"
+              variant="ghost"
+              size="icon"
+              aria-label={t("设置")}
+              title={t("设置")}
+            >
+              <Settings size={19} />
+            </ButtonLink>
+          </div>
         </header>
         <main ref={pageRef} className={ui("page")}>{children}</main>
       </div>

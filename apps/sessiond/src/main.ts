@@ -50,7 +50,7 @@ export async function runSessiond(): Promise<{
     const interruptedRuns = db.markOrphanedRunsFailed();
     supervisor = new SessionSupervisor(db, config, paths);
     const piManager = new PiManager(config, db);
-    scheduler = new Scheduler(db, supervisor, config);
+    scheduler = new Scheduler(db, supervisor, piManager, config);
     const sessionFolders = new SessionFolderStore(db, paths);
     await sessionFolders.initialize();
     ipc = new IpcServer({

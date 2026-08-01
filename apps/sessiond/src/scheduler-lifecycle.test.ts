@@ -7,6 +7,7 @@ import type {
   SessionRecord
 } from "@pi-web/protocol";
 import { SessionDatabase } from "./database.js";
+import { PiManager } from "./pi-manager.js";
 import { Scheduler } from "./scheduler.js";
 import { SessionSupervisor } from "./supervisor.js";
 
@@ -71,6 +72,7 @@ describe("Scheduler lifecycle", () => {
     const scheduler = new Scheduler(
       db,
       supervisor,
+      {} as PiManager,
       {
         maxConcurrentWorkers: 1
       } as PiWebConfig

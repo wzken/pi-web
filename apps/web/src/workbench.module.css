@@ -2308,6 +2308,9 @@
 
 .home-composer-bar {
   min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   justify-content: space-between;
   padding: 6px 10px 10px 12px;
   border-top: 0;
