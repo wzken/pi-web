@@ -1,141 +1,181 @@
-import type { RealtimeEvent } from "@pi-web/protocol";
-import { useEffect, type Dispatch } from "react";
+import type {
+  RealtimeEvent,
+  SessionSnapshot
+} from "@pi-web/protocol";
+import { useEffect } from "react";
 import {
-  isNewerSequence,
+  createSessionHeartbeat,
+  mergeSynchronizedEvents,
   parseSessionSocketMessage,
-  resolveAfterSequence
+  sessionProjectionResetCloseCode,
+  type SessionHeartbeat,
+  type SequenceDisposition
 } from "../../../session-realtime";
-import { notifySessionCompletion } from "../../../notifications";
-import { t } from "../../../i18n";
-import type { SessionDetailAction } from "../types";
-
-interface MutableValue<T> {
-  current: T;
-}
+import type { ConnectionState } from "../types";
 
 interface UseSessionConnectionOptions {
   sessionId: string;
-  connectedSessionId: string | undefined;
-  sessionDisplayName: string | undefined;
-  dispatch: Dispatch<SessionDetailAction>;
-  activeSessionId: MutableValue<string>;
-  latestSequence: MutableValue<number>;
-  refresh: () => Promise<boolean>;
-  scheduleRefresh: () => void;
+  enabled: boolean;
+  getResumeSequence: () => number;
+  onSnapshot: (snapshot: SessionSnapshot) => boolean;
+  onEvent: (event: RealtimeEvent) => SequenceDisposition;
+  onError: (error: unknown) => void;
+  onSynchronized: () => void;
+  onConnectionStateChange: (state: ConnectionState) => void;
+  onProjectionReset: () => void;
+  onDisconnect: (projectionReset: boolean) => void;
 }
+
+const maxPreSynchronizationEvents = 512;
+const maxPreSynchronizationCharacters = 2 * 1024 * 1024;
 
 export function useSessionConnection({
   sessionId,
-  connectedSessionId,
-  sessionDisplayName,
-  dispatch,
-  activeSessionId,
-  latestSequence,
-  refresh,
-  scheduleRefresh
+  enabled,
+  getResumeSequence,
+  onSnapshot,
+  onEvent,
+  onError,
+  onSynchronized,
+  onConnectionStateChange,
+  onProjectionReset,
+  onDisconnect
 }: UseSessionConnectionOptions): void {
   useEffect(() => {
-    if (!connectedSessionId || connectedSessionId !== sessionId) return;
+    if (!enabled) return;
     let stopped = false;
     let socket: WebSocket | null = null;
+    let heartbeat: SessionHeartbeat | null = null;
     let reconnectTimer: number | null = null;
     let retryMs = 500;
     let hasConnected = false;
-    const initialSequence = latestSequence.current;
+    let synchronized = false;
+    let bufferedEvents: RealtimeEvent[] = [];
+    let bufferedEventCharacters = 0;
+    let projectionResetHandled = false;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    dispatch({ type: "connection.set", state: "connecting" });
+    onConnectionStateChange("connecting");
 
-    function applyEvent(event: RealtimeEvent) {
-      if (
-        activeSessionId.current !== sessionId ||
-        event.sessionId !== sessionId ||
-        !isNewerSequence(latestSequence.current, event.sequence)
-      ) {
-        return;
-      }
-      latestSequence.current = event.sequence;
-      sessionStorage.setItem(
-        `pi-web-seq:${sessionId}`,
-        String(event.sequence)
+    function resetConnectionProjection() {
+      if (projectionResetHandled || stopped) return;
+      projectionResetHandled = true;
+      onProjectionReset();
+      onConnectionStateChange(
+        hasConnected ? "reconnecting" : "connecting"
       );
-      dispatch({ type: "realtime.event", event });
-      if (
-        event.type === "pi.message_end" ||
-        event.type === "pi.agent_settled" ||
-        event.type === "session.ready" ||
-        event.type === "session.worker_exit"
-      ) {
-        scheduleRefresh();
+      onDisconnect(true);
+      socket?.close();
+    }
+
+    function deliverEvents(events: RealtimeEvent[]): boolean {
+      for (const event of events) {
+        if (onEvent(event) === "gap") {
+          resetConnectionProjection();
+          return false;
+        }
       }
-      if (
-        event.type === "pi.agent_settled" ||
-        event.type === "session.worker_exit"
-      ) {
-        notifySessionCompletion({
-          sessionId,
-          displayName: sessionDisplayName ?? t("Pi 会话"),
-          failed: event.type === "session.worker_exit"
-        });
-      }
+      return true;
+    }
+
+    function completeSynchronization(events: RealtimeEvent[]): void {
+      synchronized = true;
+      const pending = bufferedEvents;
+      bufferedEvents = [];
+      bufferedEventCharacters = 0;
+      if (!deliverEvents(mergeSynchronizedEvents(events, pending))) return;
+      hasConnected = true;
+      onSynchronized();
+      onConnectionStateChange("connected");
     }
 
     function connect() {
       if (stopped) return;
-      socket = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
-      socket.addEventListener("open", () => {
-        hasConnected = true;
-        dispatch({ type: "connection.set", state: "connected" });
+      heartbeat?.stop();
+      heartbeat = null;
+      synchronized = false;
+      bufferedEvents = [];
+      bufferedEventCharacters = 0;
+      projectionResetHandled = false;
+      const nextSocket = new WebSocket(
+        `${protocol}//${window.location.host}/api/ws`
+      );
+      socket = nextSocket;
+      nextSocket.addEventListener("open", () => {
         retryMs = 500;
-        const afterSequence = resolveAfterSequence(
-          sessionStorage.getItem(`pi-web-seq:${sessionId}`),
-          Math.max(initialSequence, latestSequence.current)
-        );
-        socket?.send(
+        nextSocket.send(
           JSON.stringify({
             type: "subscribe",
             sessionId,
-            afterSequence
+            afterSequence: getResumeSequence()
           })
         );
+        heartbeat = createSessionHeartbeat({
+          sendPing: () => {
+            if (nextSocket.readyState === WebSocket.OPEN) {
+              nextSocket.send(JSON.stringify({ type: "ping" }));
+            }
+          },
+          onTimeout: () => {
+            if (nextSocket.readyState === WebSocket.OPEN) {
+              nextSocket.close();
+            }
+          }
+        });
+        heartbeat.start();
       });
-      socket.addEventListener("message", (message) => {
+      nextSocket.addEventListener("message", (message) => {
         const input = parseSessionSocketMessage(message.data);
         if (!input) return;
+        if (input.type === "pong") {
+          heartbeat?.acknowledge();
+          return;
+        }
+        if (input.type === "error") {
+          onError(new Error(input.message));
+          nextSocket.close();
+          return;
+        }
         if (input.type === "snapshot") {
-          const next = input.snapshot;
-          if (
-            activeSessionId.current === sessionId &&
-            next.session.id === sessionId &&
-            next.sequence >= latestSequence.current
-          ) {
-            latestSequence.current = next.sequence;
-            sessionStorage.setItem(
-              `pi-web-seq:${sessionId}`,
-              String(next.sequence)
-            );
-            dispatch({ type: "snapshot.synced", snapshot: next });
+          if (!onSnapshot(input.snapshot)) {
+            resetConnectionProjection();
+            return;
           }
+          completeSynchronization([]);
           return;
         }
         if (input.type === "incremental") {
-          for (const event of input.events) {
-            applyEvent(event);
-          }
+          completeSynchronization(input.events);
           return;
         }
-        applyEvent(input.event);
-      });
-      socket.addEventListener("close", () => {
-        if (stopped) return;
-        dispatch({
-          type: "connection.set",
-          state: hasConnected ? "reconnecting" : "connecting"
-        });
-        if (document.visibilityState === "visible") {
-          void refresh().catch((error) =>
-            dispatch({ type: "error.set", error })
-          );
+        if (!synchronized) {
+          const eventCharacters = serializedCharacters(input.event);
+          if (
+            bufferedEvents.length >= maxPreSynchronizationEvents ||
+            eventCharacters >
+              maxPreSynchronizationCharacters - bufferedEventCharacters
+          ) {
+            resetConnectionProjection();
+            return;
+          }
+          bufferedEvents.push(input.event);
+          bufferedEventCharacters += eventCharacters;
+          return;
         }
+        deliverEvents([input.event]);
+      });
+      nextSocket.addEventListener("close", (event) => {
+        heartbeat?.stop();
+        heartbeat = null;
+        if (stopped) return;
+        if (projectionResetHandled) return;
+        if (event.code === sessionProjectionResetCloseCode) {
+          resetConnectionProjection();
+          return;
+        }
+        onConnectionStateChange(
+          hasConnected ? "reconnecting" : "connecting"
+        );
+        onDisconnect(false);
         reconnectTimer = window.setTimeout(connect, retryMs);
         retryMs = Math.min(5_000, retryMs * 2);
       });
@@ -144,17 +184,28 @@ export function useSessionConnection({
     connect();
     return () => {
       stopped = true;
+      heartbeat?.stop();
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       socket?.close();
     };
   }, [
-    activeSessionId,
-    connectedSessionId,
-    dispatch,
-    latestSequence,
-    refresh,
-    scheduleRefresh,
-    sessionDisplayName,
+    enabled,
+    getResumeSequence,
+    onConnectionStateChange,
+    onDisconnect,
+    onEvent,
+    onError,
+    onProjectionReset,
+    onSnapshot,
+    onSynchronized,
     sessionId
   ]);
+}
+
+function serializedCharacters(value: unknown): number {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
 }

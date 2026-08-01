@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Button, IconButton } from "./components";
+import { Button, Dialog, IconButton, Switch } from "./components";
 import { t } from "./i18n";
 import { ImageAttachmentTray } from "./ImageAttachments";
 
@@ -12,6 +12,9 @@ describe("control primitives", () => {
 
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain("disabled");
+    expect(markup).toContain("<mdui-button");
+    expect(markup).toContain("button-primary");
+    expect(markup).toContain('type="submit"');
     expect(markup).toContain("保存设置");
     expect(markup).toContain("保存中…");
   });
@@ -21,9 +24,35 @@ describe("control primitives", () => {
       <IconButton label="刷新状态"><span>↻</span></IconButton>
     );
 
-    expect(markup).toContain('aria-label="刷新状态"');
+    expect(markup).toContain("<mdui-button-icon");
+    expect(markup).not.toMatch(/<mdui-button-icon[^>]*aria-label=/);
+    expect(markup).toContain('type="button"');
     expect(markup).toContain('role="tooltip"');
-    expect(markup).toContain("刷新状态");
+    expect(markup).toContain(">刷新状态</span>");
+  });
+
+  it("slots explicit names into MDUI buttons instead of labelling the host", () => {
+    const markup = renderToStaticMarkup(
+      <Button aria-label="打开运行设置">
+        深入
+      </Button>
+    );
+
+    expect(markup).not.toMatch(/<mdui-button[^>]*aria-label=/);
+    expect(markup).toContain('aria-hidden="true">深入</span>');
+    expect(markup).toContain(">打开运行设置</span>");
+  });
+
+  it("keeps explicit names stable while an MDUI button is loading", () => {
+    const markup = renderToStaticMarkup(
+      <Button loading aria-label="保存运行设置" loadingLabel="保存中…">
+        保存
+      </Button>
+    );
+
+    expect(markup).not.toMatch(/<mdui-button[^>]*aria-label=/);
+    expect(markup).toContain('role="status" aria-hidden="true"');
+    expect(markup).toContain(">保存运行设置</span>");
   });
 
   it("exposes toolbar selection without changing the control structure", () => {
@@ -32,8 +61,38 @@ describe("control primitives", () => {
     );
 
     expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain('data-app-variant="toolbar"');
+    expect(markup).toContain('data-active="true"');
     expect(markup).toContain("button-toolbar");
-    expect(markup).toContain("is-active");
+  });
+
+  it("keeps the legacy dialog hook on content without styling the overlay host", () => {
+    const markup = renderToStaticMarkup(
+      <Dialog open labelledBy="dialog-title" onClose={() => undefined}>
+        <h2 id="dialog-title">标题</h2>
+      </Dialog>
+    );
+
+    expect(markup).toContain("<mdui-dialog");
+    expect(markup).toMatch(/<div class="dialog(?:\s|")/);
+    expect(markup).not.toMatch(/<mdui-dialog[^>]*class="dialog(?:\s|")/);
+  });
+
+  it("renders a controlled MDUI switch without forwarding click handlers", () => {
+    const markup = renderToStaticMarkup(
+      <Switch
+        label="完成提示音"
+        checked
+        onClick={() => {
+          throw new Error("SSR must not invoke interactions");
+        }}
+      />
+    );
+
+    expect(markup).toContain("<mdui-switch");
+    expect(markup).toContain('role="switch"');
+    expect(markup).toContain('aria-checked="true"');
+    expect(markup).not.toContain("onClick");
   });
 
   it("renders image attachments with names, sizes, and removable controls", () => {
@@ -56,7 +115,7 @@ describe("control primitives", () => {
     expect(markup).toContain(`aria-label="${t("待发送图片")}"`);
     expect(markup).toContain('alt="screen.png"');
     expect(markup).toContain(
-      `aria-label="${t("移除图片 {{name}}", { name: "screen.png" })}"`
+      `>${t("移除图片 {{name}}", { name: "screen.png" })}</span>`
     );
     expect(markup).toContain("2 KB");
   });

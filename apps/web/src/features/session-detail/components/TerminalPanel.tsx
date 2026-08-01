@@ -120,18 +120,18 @@ export function TerminalPanel({
       screenReaderMode: true,
       scrollback: 5000,
       theme: {
-        background: cssColor(style, "--panel", "#111"),
-        foreground: cssColor(style, "--text", "#eee"),
-        cursor: cssColor(style, "--teal", "#5ce0c5"),
-        selectionBackground: `${cssColor(style, "--teal", "#5ce0c5")}55`,
-        black: cssColor(style, "--bg", "#111"),
-        red: cssColor(style, "--red", "#ff7b73"),
-        green: cssColor(style, "--teal", "#5ce0c5"),
-        yellow: cssColor(style, "--amber", "#ffbf69"),
-        blue: cssColor(style, "--blue", "#78b7ff"),
-        magenta: cssColor(style, "--violet", "#a999ff"),
-        cyan: cssColor(style, "--teal", "#5ce0c5"),
-        white: cssColor(style, "--text", "#edf2ef")
+        background: cssColor(style, "--panel", "#141415"),
+        foreground: cssColor(style, "--text", "#f5f5f6"),
+        cursor: cssColor(style, "--text", "#f5f5f6"),
+        selectionBackground: `${cssColor(style, "--text", "#f5f5f6")}2e`,
+        black: cssColor(style, "--bg", "#0b0b0c"),
+        red: cssColor(style, "--red", "#bd7777"),
+        green: cssColor(style, "--teal", "#829a88"),
+        yellow: cssColor(style, "--amber", "#b3a16e"),
+        blue: cssColor(style, "--blue", "#8098b5"),
+        magenta: cssColor(style, "--violet", "#a5a5aa"),
+        cyan: cssColor(style, "--teal", "#8b9da0"),
+        white: cssColor(style, "--text", "#f5f5f6")
       }
     });
     const fit = new FitAddon();

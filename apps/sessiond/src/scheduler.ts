@@ -3,7 +3,6 @@ import { jobInputSchema, type ScheduledJob, type SessionRecord } from "@pi-web/p
 import { nowIso, PiWebError, safeErrorMessage } from "@pi-web/shared";
 import { SessionDatabase } from "./database.js";
 import { humanizeCron, nextOccurrence, validateSchedule } from "./cron.js";
-import { PiManager } from "./pi-manager.js";
 import { SessionSupervisor } from "./supervisor.js";
 
 interface ActiveTimer {
@@ -14,25 +13,28 @@ interface ActiveTimer {
 export class Scheduler {
   readonly #db: SessionDatabase;
   readonly #supervisor: SessionSupervisor;
-  readonly #piManager: PiManager;
   #config: PiWebConfig;
   #tickTimer: NodeJS.Timeout | null = null;
   readonly #activeTimers = new Map<string, ActiveTimer>();
+  readonly #inFlight = new Set<Promise<unknown>>();
   #ticking = false;
+  #stopping = false;
+  readonly #handleSupervisorStatus = (session: SessionRecord) => {
+    if (this.#stopping) return;
+    void this.#trackTask(this.#onSessionStatus(session)).catch(
+      () => undefined
+    );
+  };
 
   constructor(
     db: SessionDatabase,
     supervisor: SessionSupervisor,
-    piManager: PiManager,
     config: PiWebConfig
   ) {
     this.#db = db;
     this.#supervisor = supervisor;
-    this.#piManager = piManager;
     this.#config = config;
-    supervisor.on("status", (session: SessionRecord) => {
-      void this.#onSessionStatus(session);
-    });
+    supervisor.on("status", this.#handleSupervisorStatus);
   }
 
   updateConfig(config: PiWebConfig): void {
@@ -40,13 +42,25 @@ export class Scheduler {
   }
 
   start(): void {
+    if (this.#stopping) {
+      throw new PiWebError(
+        "SESSIOND_STOPPING",
+        "Session daemon is stopping",
+        503
+      );
+    }
     this.recomputeFutureRuns();
-    this.#tickTimer = setInterval(() => void this.tick(), 15_000);
+    this.#tickTimer = setInterval(
+      () => void this.tick().catch(() => undefined),
+      15_000
+    );
     this.#tickTimer.unref();
-    void this.tick();
+    void this.tick().catch(() => undefined);
   }
 
   stop(): void {
+    this.#stopping = true;
+    this.#supervisor.off("status", this.#handleSupervisorStatus);
     if (this.#tickTimer) clearInterval(this.#tickTimer);
     this.#tickTimer = null;
     for (const timers of this.#activeTimers.values()) {
@@ -54,6 +68,13 @@ export class Scheduler {
       if (timers.grace) clearTimeout(timers.grace);
     }
     this.#activeTimers.clear();
+  }
+
+  async shutdown(): Promise<void> {
+    this.stop();
+    while (this.#inFlight.size > 0) {
+      await Promise.allSettled([...this.#inFlight]);
+    }
   }
 
   recomputeFutureRuns(): void {
@@ -65,12 +86,18 @@ export class Scheduler {
     }
   }
 
-  async tick(): Promise<void> {
+  tick(): Promise<void> {
+    return this.#trackTask(this.#tick());
+  }
+
+  async #tick(): Promise<void> {
+    if (this.#stopping) return;
     if (this.#ticking) return;
     this.#ticking = true;
     try {
       const now = nowIso();
       for (const job of this.#db.dueJobs(now)) {
+        if (this.#stopping) break;
         const scheduledFor = job.nextRunAt ?? now;
         const next = nextOccurrence(
           job.cronExpression,
@@ -105,7 +132,6 @@ export class Scheduler {
       throw new PiWebError("JOB_LIMIT", "Schedule limit reached", 429);
     }
     const validated = await validateSchedule(raw, this.#config);
-    await this.#assertModelExists(validated.input.model);
     const input =
       meta.actor === "model" &&
       this.#config.modelSchedulePolicy === "create_disabled"
@@ -138,7 +164,6 @@ export class Scheduler {
     this.#assertModelOwnership(current, actor, sourceSessionId);
     const merged = jobInputSchema.parse({ ...current, ...(raw as object) });
     const validated = await validateSchedule(merged, this.#config);
-    await this.#assertModelExists(validated.input.model);
     const job = this.#db.updateJob(
       id,
       validated.input,
@@ -240,11 +265,28 @@ export class Scheduler {
     throw new PiWebError("INVALID_SCHEDULE_ACTION", "Unknown schedule action", 400);
   }
 
-  async #trigger(
+  #trigger(
     job: ScheduledJob,
     scheduledFor: string,
     triggerType: "cron" | "manual" | "model_run_now"
   ) {
+    return this.#trackTask(
+      this.#performTrigger(job, scheduledFor, triggerType)
+    );
+  }
+
+  async #performTrigger(
+    job: ScheduledJob,
+    scheduledFor: string,
+    triggerType: "cron" | "manual" | "model_run_now"
+  ) {
+    if (this.#stopping) {
+      throw new PiWebError(
+        "SESSIOND_STOPPING",
+        "Session daemon is stopping",
+        503
+      );
+    }
     if (this.#db.activeRunForJob(job.id)) {
       return this.#db.createRun({
         jobId: job.id,
@@ -274,8 +316,21 @@ export class Scheduler {
         sessionId: session.id,
         startedAt: nowIso()
       });
+      if (this.#stopping) {
+        await this.#supervisor
+          .close(session.id, "scheduler")
+          .catch(() => undefined);
+        return this.#db.updateRun(run.id, {
+          status: "cancelled",
+          endedAt: nowIso(),
+          errorSummary: "Session daemon stopped"
+        });
+      }
       const timeout = setTimeout(
-        () => void this.#timeoutRun(run.id, session.id),
+        () =>
+          void this.#trackTask(
+            this.#timeoutRun(run.id, session.id)
+          ).catch(() => undefined),
         job.timeoutSeconds * 1000
       );
       timeout.unref();
@@ -338,29 +393,18 @@ export class Scheduler {
     await this.#supervisor.abort(sessionId, "scheduler").catch(() => undefined);
     const timers = this.#activeTimers.get(runId);
     if (!timers) return;
-    timers.grace = setTimeout(() => {
-      void this.#supervisor.close(sessionId, "scheduler").catch(() => undefined);
+    if (this.#stopping) {
       this.#activeTimers.delete(runId);
+      return;
+    }
+    timers.grace = setTimeout(() => {
+      void this.#trackTask(
+        this.#supervisor
+          .close(sessionId, "scheduler")
+          .finally(() => this.#activeTimers.delete(runId))
+      ).catch(() => undefined);
     }, 10_000);
     timers.grace.unref();
-  }
-
-  async #assertModelExists(model: string | null): Promise<void> {
-    if (!model) return;
-    const exists = await this.#piManager.modelExists(model).catch((error) => {
-      throw new PiWebError(
-        "PI_MODEL_CHECK_FAILED",
-        `Could not verify the selected Pi model: ${safeErrorMessage(error)}`,
-        503
-      );
-    });
-    if (!exists) {
-      throw new PiWebError(
-        "MODEL_NOT_FOUND",
-        `Pi does not report the model ${model}`,
-        400
-      );
-    }
   }
 
   #assertModelOwnership(
@@ -383,6 +427,14 @@ export class Scheduler {
         403
       );
     }
+  }
+
+  #trackTask<T>(task: Promise<T>): Promise<T> {
+    this.#inFlight.add(task);
+    void task
+      .finally(() => this.#inFlight.delete(task))
+      .catch(() => undefined);
+    return task;
   }
 }
 

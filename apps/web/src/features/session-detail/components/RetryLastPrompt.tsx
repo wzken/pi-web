@@ -1,8 +1,9 @@
 import { AlertOctagon, RefreshCcw } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, jsonBody } from "../../../api";
 import { Button } from "../../../components";
 import type { RetryablePrompt } from "../../../session-messages";
+import { PendingMutationTracker } from "../../../mutation-id";
 import { t } from "../../../i18n";
 import { ui } from "../../../ui";
 
@@ -20,15 +21,33 @@ export function RetryLastPrompt({
   onRetried
 }: RetryLastPromptProps) {
   const [busy, setBusy] = useState(false);
+  const resumeMutation = useRef(new PendingMutationTracker());
 
   async function retry() {
     if (busy) return;
+    if (
+      !window.confirm(
+        t("重新发送可能重复执行文件修改或命令。确认继续吗？")
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
+      const payload = {
+        prompt: prompt.message,
+        images: prompt.images
+      };
+      const mutationId = resumeMutation.current.reserve({
+        operation: "sessions.resume",
+        sessionId,
+        payload
+      });
       await api(`/api/sessions/${sessionId}/resume`, {
         method: "POST",
-        ...jsonBody(prompt)
+        ...jsonBody({ ...payload, mutationId })
       });
+      resumeMutation.current.confirm(mutationId);
       await onRetried();
     } catch (error) {
       onError(error);

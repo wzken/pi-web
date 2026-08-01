@@ -1,84 +1,82 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import { promisify } from "node:util";
-import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { PiWebConfig } from "@pi-web/config";
 import { PiRpcWorker } from "@pi-web/pi-rpc";
+import type { PiStatus } from "@pi-web/protocol";
 import { PiWebError, safeErrorMessage } from "@pi-web/shared";
 import { SessionDatabase } from "./database.js";
 
 const execFileAsync = promisify(execFile);
 
-export interface PiManagerStatus {
-  available: boolean;
-  executable: string;
-  version: string | null;
-  models: Array<{ provider: string; id: string; label: string }>;
-  providers: Array<{ id: string; configured: boolean; modelCount: number }>;
-  packages: string[];
-  skills: ResourceItem[];
-  extensions: ResourceItem[];
-  templates: ResourceItem[];
-  errors: string[];
+interface PiCommandOptions {
+  timeout: number;
+  cwd?: string;
+  windowsHide: boolean;
+  maxBuffer: number;
+  encoding: "utf8";
+  env: NodeJS.ProcessEnv;
 }
 
-interface ResourceItem {
-  name: string;
-  path: string;
-  location: "user";
-}
+type PiCommandExecutor = (
+  executable: string,
+  args: string[],
+  options: PiCommandOptions
+) => Promise<{ stdout: string; stderr: string }>;
+
+const defaultPiCommandExecutor: PiCommandExecutor = async (
+  executable,
+  args,
+  options
+) => {
+  const result = await execFileAsync(executable, args, options);
+  return { stdout: result.stdout, stderr: result.stderr };
+};
 
 export class PiManager {
   #config: PiWebConfig;
   readonly #db: SessionDatabase;
+  readonly #execute: PiCommandExecutor;
 
-  constructor(config: PiWebConfig, db: SessionDatabase) {
+  constructor(
+    config: PiWebConfig,
+    db: SessionDatabase,
+    execute: PiCommandExecutor = defaultPiCommandExecutor
+  ) {
     this.#config = config;
     this.#db = db;
+    this.#execute = execute;
   }
 
   updateConfig(config: PiWebConfig): void {
     this.#config = config;
   }
 
-  async status(): Promise<PiManagerStatus> {
+  async status(): Promise<PiStatus> {
     const errors: string[] = [];
-    const [versionResult, listResult, modelResult, resources] = await Promise.all([
+    const [versionResult, listResult, modelResult] = await Promise.all([
       this.#run(["--version"]).catch((error) => {
         errors.push(`version: ${safeErrorMessage(error)}`);
         return null;
       }),
-      this.#run(["list"]).catch((error) => {
+      this.#runGlobalCommand(["list"]).catch((error) => {
         errors.push(`packages: ${safeErrorMessage(error)}`);
         return null;
       }),
-      this.#run(["--list-models"]).catch((error) => {
+      this.#runGlobalCommand(["--list-models"]).catch((error) => {
         errors.push(`models: ${safeErrorMessage(error)}`);
         return null;
-      }),
-      this.#discoverResources().catch((error) => {
-        errors.push(`resources: ${safeErrorMessage(error)}`);
-        return { skills: [], extensions: [], templates: [] };
       })
     ]);
     const models = parseModels(modelResult?.stdout ?? "");
-    const providerMap = new Map<string, number>();
-    for (const model of models) {
-      providerMap.set(model.provider, (providerMap.get(model.provider) ?? 0) + 1);
-    }
     return {
       available: versionResult !== null,
       executable: this.#config.piExecutable,
       version: versionResult?.stdout.trim() || null,
       models,
-      providers: [...providerMap.entries()].map(([id, modelCount]) => ({
-        id,
-        configured: true,
-        modelCount
-      })),
       packages: parsePackageList(listResult?.stdout ?? ""),
-      ...resources,
       errors
     };
   }
@@ -97,7 +95,7 @@ export class PiManager {
         const source = validatePackageSource(input.source);
         args = [input.action, source];
       }
-      const result = await this.#run(args, 5 * 60_000);
+      const result = await this.#runGlobalCommand(args, 5 * 60_000);
       this.#db.audit(`package.${input.action}`, "success", actor, null, {
         source: input.source ? redactSource(input.source) : null
       });
@@ -120,7 +118,7 @@ export class PiManager {
       errors.push(safeErrorMessage(error));
       return null;
     });
-    const packages = await this.#run(["list"]).catch((error) => {
+    const packages = await this.#runGlobalCommand(["list"]).catch((error) => {
       errors.push(safeErrorMessage(error));
       return null;
     });
@@ -137,54 +135,70 @@ export class PiManager {
     };
   }
 
-  async modelExists(model: string): Promise<boolean> {
-    const models = parseModels((await this.#run(["--list-models"])).stdout);
-    return models.some((candidate) => `${candidate.provider}/${candidate.id}` === model);
-  }
-
   async #probeRpc(): Promise<boolean> {
-    const worker = new PiRpcWorker({
-      executable: this.#config.piExecutable,
-      cwd: homedir(),
-      name: "Pi Web Doctor",
-      noSession: true,
-      requestTimeoutMs: 10_000
+    return await this.#withNeutralCwd(async (cwd) => {
+      const worker = new PiRpcWorker({
+        executable: this.#config.piExecutable,
+        cwd,
+        name: "Pi Web Doctor",
+        noSession: true,
+        requestTimeoutMs: 10_000
+      });
+      try {
+        await worker.start();
+        return true;
+      } finally {
+        await worker.close(1000);
+      }
     });
-    try {
-      await worker.start();
-      return true;
-    } finally {
-      await worker.close(1000).catch(() => undefined);
-    }
   }
 
   async #run(
     args: string[],
-    timeout = 20_000
+    timeout = 20_000,
+    cwd?: string
   ): Promise<{ stdout: string; stderr: string }> {
-    const result = await execFileAsync(this.#config.piExecutable, args, {
+    return await this.#execute(this.#config.piExecutable, args, {
       timeout,
+      ...(cwd ? { cwd } : {}),
       windowsHide: true,
       maxBuffer: 4 * 1024 * 1024,
       encoding: "utf8",
       env: process.env
     });
-    return { stdout: result.stdout, stderr: result.stderr };
   }
 
-  async #discoverResources(): Promise<{
-    skills: ResourceItem[];
-    extensions: ResourceItem[];
-    templates: ResourceItem[];
-  }> {
-    const base =
-      process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-    const [skills, extensions, templates] = await Promise.all([
-      listResources(join(base, "skills"), "skill"),
-      listResources(join(base, "extensions"), "extension"),
-      listResources(join(base, "prompts"), "prompt")
-    ]);
-    return { skills, extensions, templates };
+  async #runGlobalCommand(
+    args: string[],
+    timeout = 20_000
+  ): Promise<{ stdout: string; stderr: string }> {
+    return await this.#withNeutralCwd(
+      async (cwd) => await this.#run(args, timeout, cwd)
+    );
+  }
+
+  async #withNeutralCwd<T>(
+    operation: (cwd: string) => Promise<T>
+  ): Promise<T> {
+    const temporaryRoot = resolve(tmpdir());
+    const prefix = "pi-web-global-scope-";
+    const cwd = await mkdtemp(join(temporaryRoot, prefix));
+    try {
+      // Pi infers project resources from cwd. Global discovery and diagnostics
+      // run from a neutral directory so project settings and extensions remain
+      // owned by their individual workers.
+      return await operation(cwd);
+    } finally {
+      const resolved = resolve(cwd);
+      if (
+        dirname(resolved) === temporaryRoot &&
+        basename(resolved).startsWith(prefix)
+      ) {
+        await rm(resolved, { recursive: true, force: true }).catch(
+          () => undefined
+        );
+      }
+    }
   }
 }
 
@@ -197,19 +211,20 @@ export function validatePackageSource(source: string | undefined): string {
     source.startsWith("git:") ||
     source.startsWith("https://") ||
     source.startsWith("http://") ||
+    source.startsWith("ssh://") ||
     isAbsolute(source)
   ) {
     return source;
   }
   throw new PiWebError(
     "INVALID_PACKAGE_SOURCE",
-    "Use an npm:, git:, URL, or absolute local package source",
+    "Use an npm:, git:, HTTP(S), SSH, or absolute local package source",
     400
   );
 }
 
-export function parseModels(output: string): PiManagerStatus["models"] {
-  const results: PiManagerStatus["models"] = [];
+export function parseModels(output: string): PiStatus["models"] {
+  const results: PiStatus["models"] = [];
   for (const line of output.split(/\r?\n/)) {
     const trimmed = stripAnsi(line).trim();
     if (!trimmed || /^provider\s{2,}model\b/i.test(trimmed)) continue;
@@ -235,16 +250,20 @@ export function parseModels(output: string): PiManagerStatus["models"] {
 
 export function parsePackageList(output: string): string[] {
   const results: string[] = [];
-  let inPackageSection = false;
+  let inUserPackageSection = false;
   for (const rawLine of output.split(/\r?\n/)) {
     const line = stripAnsi(rawLine);
-    if (/^(?:User|Project) packages:\s*$/i.test(line.trim())) {
-      inPackageSection = true;
+    if (/^User packages:\s*$/i.test(line.trim())) {
+      inUserPackageSection = true;
+      continue;
+    }
+    if (/^Project packages:\s*$/i.test(line.trim())) {
+      inUserPackageSection = false;
       continue;
     }
     if (/^No packages installed\.\s*$/i.test(line.trim())) return [];
     if (
-      inPackageSection &&
+      inUserPackageSection &&
       /^ {2}\S/.test(line) &&
       !/^ {4}/.test(line)
     ) {
@@ -260,41 +279,6 @@ function stripAnsi(value: string): string {
     /\u001b\[[0-?]*[ -/]*[@-~]/g,
     ""
   );
-}
-
-async function listResources(
-  directory: string,
-  kind: "skill" | "extension" | "prompt"
-): Promise<ResourceItem[]> {
-  const entries = await readdir(directory, { withFileTypes: true }).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return [];
-      throw error;
-    }
-  );
-  const results: ResourceItem[] = [];
-  for (const entry of entries) {
-    const path = join(directory, entry.name);
-    if (kind === "skill" && entry.isDirectory()) {
-      const skillFile = join(path, "SKILL.md");
-      if (await exists(skillFile)) {
-        const title = await firstHeading(skillFile);
-        results.push({ name: title || entry.name, path: skillFile, location: "user" });
-      }
-    } else if (kind !== "skill" && (entry.isDirectory() || entry.isFile())) {
-      results.push({ name: entry.name, path, location: "user" });
-    }
-  }
-  return results.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-async function exists(path: string): Promise<boolean> {
-  return await stat(path).then(() => true).catch(() => false);
-}
-
-async function firstHeading(path: string): Promise<string | null> {
-  const text = await readFile(path, "utf8").catch(() => "");
-  return text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
 }
 
 function redactSource(source: string): string {

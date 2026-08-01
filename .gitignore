@@ -9,6 +9,7 @@ test-results/
 !theme-packs/dist/*.zip
 
 # Local configuration and runtime state
+.codex/
 .env
 .env.*
 !.env.example

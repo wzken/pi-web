@@ -34,22 +34,25 @@ Pi Web 是面向 [Pi Coding Agent](https://pi.dev) 的单用户、自托管 Web
 - 受允许根目录约束的文件浏览、预览、上传、新建和重命名。
 - 每个会话拥有受认证的 xterm.js 终端和移动端控制键。
 - 五字段 Cron、IANA 时区、历史记录、重叠保护、超时和立即运行。
-- Pi Packages、Skills、Extensions、模板、供应商和模型管理。
+- 直接展示 Pi CLI 返回的版本、可用模型并仅管理用户级 Packages；项目级
+  Packages、Skills、Extensions 和提示模板仍由每个 Pi Worker 根据项目上下文加载。
 - 桌面与移动端响应式界面、命令面板、通知和 PWA。
 - 支持跟随系统的简体中文与英文界面。
 - 支持亮色、暗色和跟随系统的声明式 ZIP 主题包。
 - Linux systemd 用户服务和非 root Docker Compose 部署。
 
-## 内置主题
+## 主题包
 
-每个 ZIP 都同时包含亮色与暗色方案，并支持跟随系统：
+Pi Neutral 是内置默认主题。下面两个可选示例包都同时包含亮色与暗色方案，
+并支持跟随系统：
 
 | 主题 | 源码 | 可安装 ZIP |
 | --- | --- | --- |
 | Geist Workbench | [主题源码](theme-packs/geist-workbench) | [下载 ZIP](theme-packs/dist/geist-workbench.zip) |
 | Material 3 Workbench | [主题源码](theme-packs/material-3-workbench) | [下载 ZIP](theme-packs/dist/material-3-workbench.zip) |
 
-登录后进入 **设置 → 外观 → 主题包** 导入 ZIP。主题格式、安全限制和恢复方法见
+设置页只选择管理员已经安装的主题包。ZIP 安装能力仍保留在兼容 API 与部署工具
+中，但不再暴露在产品界面。主题格式、安全限制和恢复方法见
 [主题包指南](theme-packs/README.md)。
 
 ## 环境要求

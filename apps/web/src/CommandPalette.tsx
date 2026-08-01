@@ -138,7 +138,7 @@ export function CommandPalette({
         label: t(item.label),
         description: t(item.description)
       })),
-      ...sessions.slice(0, 12).map((session) => ({
+      ...sessions.map((session) => ({
         id: `session-${session.id}`,
         label: session.displayName,
         description: `${session.cwd} · ${formatDate(session.updatedAt)}`,
@@ -151,7 +151,7 @@ export function CommandPalette({
     [sessions]
   );
   const filtered = useMemo(
-    () => filterCommandItems(commands, query),
+    () => filterCommandItems(commands, query).slice(0, 20),
     [commands, query]
   );
   const selectedIndex = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
@@ -187,6 +187,7 @@ export function CommandPalette({
       labelledBy="command-palette-title"
       onClose={onClose}
       className={ui(styles.dialog ?? "")}
+      maxWidth={680}
     >
       <h2 id="command-palette-title" className={ui(styles.title)}>
         {t("命令面板")}

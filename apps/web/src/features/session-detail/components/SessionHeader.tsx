@@ -3,7 +3,10 @@ import type {
   SessionStatus
 } from "@pi-web/protocol";
 import {
+  Braces,
+  Cpu,
   Download,
+  Gauge,
   GitBranch,
   Info,
   PanelLeftClose,
@@ -12,14 +15,16 @@ import {
   PanelRightOpen,
   Play,
   RefreshCcw,
+  Settings,
   TerminalSquare,
   X
 } from "lucide-react";
-import { formatCost, formatNumber } from "../../../api";
+import { formatNumber } from "../../../api";
 import {
   ActionMenu,
   ActionMenuItem,
   Button,
+  ButtonLink,
   IconButton,
   StatusDot
 } from "../../../components";
@@ -31,14 +36,12 @@ import {
 import type {
   SessionControlAction
 } from "../types";
-import { formatElapsed } from "../utils/session-formatting";
 import { asRecord } from "../utils/session-parsing";
-import { getLocale, t } from "../../../i18n";
+import { t } from "../../../i18n";
 import { ui } from "../../../ui";
 
 interface SessionHeaderProps {
   snapshot: SessionSnapshot;
-  clock: number;
   railOpen: boolean;
   filesOpen: boolean;
   systemOpen: boolean;
@@ -62,7 +65,6 @@ interface SessionHeaderProps {
 
 export function SessionHeader({
   snapshot,
-  clock,
   railOpen,
   filesOpen,
   systemOpen,
@@ -84,7 +86,8 @@ export function SessionHeader({
   const active = ["starting", "running", "waiting", "stopping"].includes(
     session.status
   );
-  const sessionStats = asRecord(asRecord(snapshot.state).sessionStats);
+  const sessionStats = asRecord(snapshot.sessionStats);
+  const runtimeState = asRecord(snapshot.state);
   const contextUsage = asRecord(sessionStats.contextUsage);
   const contextPercent =
     typeof contextUsage.percent === "number" &&
@@ -97,6 +100,18 @@ export function SessionHeader({
     typeof contextUsage.contextWindow === "number"
       ? contextUsage.contextWindow
       : null;
+  const effectiveSystemPrompt =
+    typeof runtimeState.systemPrompt === "string"
+      ? runtimeState.systemPrompt
+      : null;
+  const promptStatus =
+    effectiveSystemPrompt !== null
+      ? session.systemPrompt
+        ? t("实际 + 附加")
+        : t("实际")
+      : session.systemPrompt
+        ? t("已附加")
+        : t("默认");
   const lastUserPrompt = extractLastUserPrompt(snapshot.messages);
   const retryablePrompt = extractRetryablePrompt(
     snapshot.messages,
@@ -109,11 +124,13 @@ export function SessionHeader({
   return (
     <header className={ui("session-header")}>
       <IconButton
+        className={ui("workbench-rail-toggle")}
         label={railOpen ? t("收起会话栏") : t("展开会话栏")}
         tooltip={t("{{action}}会话栏（Ctrl+B）", {
           action: railOpen ? t("收起") : t("展开")
         })}
         variant="toolbar"
+        aria-expanded={railOpen}
         onClick={onToggleRail}
       >
         {railOpen ? (
@@ -122,48 +139,6 @@ export function SessionHeader({
           <PanelLeftOpen size={17} />
         )}
       </IconButton>
-      <Button
-        className={ui("session-export-button")}
-        variant="toolbar"
-        size="sm"
-        onClick={onExport}
-      >
-        <Download size={14} />
-        {t("导出")}
-      </Button>
-      <Button
-        variant="toolbar"
-        size="sm"
-        className={ui("session-system-button")}
-        active={systemOpen}
-        onClick={onToggleSystem}
-      >
-        <Info size={14} />
-        {t("系统")}
-      </Button>
-      {treeAvailable && (
-        <Button
-          variant="toolbar"
-          size="sm"
-          className={ui("session-tree-button")}
-          active={treeOpen}
-          onClick={onToggleTree}
-        >
-          <GitBranch size={14} />
-          {t("分支")}
-        </Button>
-      )}
-      <Button
-        variant="toolbar"
-        size="sm"
-        className={ui("session-terminal-button")}
-        active={terminalOpen}
-        onClick={onToggleTerminal}
-        title={`${t("终端")} (Ctrl/⌘+\`)`}
-      >
-        <TerminalSquare size={14} />
-        {t("终端")}
-      </Button>
       <div className={ui("session-title")}>
         <div className={ui("session-title-line")}>
           <h1>{session.displayName}</h1>
@@ -172,14 +147,26 @@ export function SessionHeader({
         <p title={session.cwd}>{session.cwd}</p>
       </div>
       <div className={ui("session-usage")}>
-        <span>
-          <b>{formatNumber(session.inputTokens + session.outputTokens)}</b>{" "}
-          token
-        </span>
-        <span>
-          <b>{session.toolCalls}</b> tools
+        <span
+          className={ui("session-fact session-model-fact")}
+          title={session.model ?? t("Pi 默认模型")}
+        >
+          <Cpu size={13} aria-hidden="true" />
+          <b>{shortModelName(session.model) || t("默认模型")}</b>
         </span>
         <span
+          className={ui("session-fact session-token-fact")}
+          title={t("输入 {{input}} · 输出 {{output}}", {
+            input: formatNumber(session.inputTokens),
+            output: formatNumber(session.outputTokens)
+          })}
+        >
+          <span aria-hidden="true">Σ</span>
+          <b>{formatNumber(session.inputTokens + session.outputTokens)}</b>
+          <small>token</small>
+        </span>
+        <span
+          className={ui("session-fact session-context-fact")}
           title={
             contextTokens !== null && contextWindow !== null
               ? `${formatNumber(contextTokens)} / ${formatNumber(
@@ -188,71 +175,35 @@ export function SessionHeader({
               : t("当前 Pi 未报告上下文占用")
           }
         >
+          <Gauge size={13} aria-hidden="true" />
           <b>
             {contextPercent === null ? "—" : `${contextPercent.toFixed(1)}%`}
           </b>{" "}
-          context
+          <small>context</small>
         </span>
-        <span title={t("开始于 {{date}}", {
-          date: new Date(session.startedAt).toLocaleString(getLocale())
-        })}>
-          <b>{formatElapsed(session.startedAt, session.endedAt, clock)}</b>{" "}
-          duration
-        </span>
-        <span title={t("成本状态：{{status}}", { status: session.costStatus })}>
-          <b>{formatCost(session.reportedCost ?? session.estimatedCost)}</b>{" "}
-          {session.costStatus === "estimated" ? "estimated" : "cost"}
-        </span>
+        <Button
+          type="button"
+          className={ui("session-fact session-prompt-fact")}
+          variant="toolbar"
+          size="sm"
+          active={systemOpen}
+          aria-expanded={systemOpen}
+          title={t(
+            "系统提示词：{{system}}；附加提示词：{{additional}}。点击查看详情。",
+            {
+              system:
+                effectiveSystemPrompt !== null ? t("已读取") : t("未报告"),
+              additional: session.systemPrompt ? t("已设置") : t("无")
+            }
+          )}
+          onClick={onToggleSystem}
+        >
+          <Braces size={13} aria-hidden="true" />
+          <b>{t("提示词")}</b>
+          <small>{promptStatus}</small>
+        </Button>
       </div>
       <div className={ui("session-controls")}>
-        {!active && (
-          <Button
-            variant="toolbar"
-            size="sm"
-            loading={controlBusy === "resume"}
-            loadingLabel={t("恢复中…")}
-            disabled={controlBusy !== null}
-            onClick={() => void onControl("resume")}
-          >
-            <Play size={16} />
-            {t("恢复")}
-          </Button>
-        )}
-        {active && (
-          <Button
-            variant="toolbar"
-            size="sm"
-            aria-label={t("关闭会话")}
-            loading={controlBusy === "close"}
-            loadingLabel={t("关闭中…")}
-            disabled={controlBusy !== null}
-            onClick={() => {
-              if (
-                window.confirm(
-                  t("关闭会释放当前 Pi Worker。历史仍会保留，之后可以恢复。继续吗？")
-                )
-              ) {
-                void onControl("close");
-              }
-            }}
-          >
-            <X size={16} />
-            {t("关闭")}
-          </Button>
-        )}
-        {canReplayLast && !retryablePrompt && lastUserPrompt && (
-          <ActionMenu label={t("更多会话操作")}>
-            <ActionMenuItem
-              disabled={replayBusy}
-              onClick={() =>
-                void onReplayLastPrompt(lastUserPrompt, session.status)
-              }
-            >
-              <RefreshCcw size={14} />
-              {replayBusy ? t("正在重新发送…") : t("重新发送最后一条")}
-            </ActionMenuItem>
-          </ActionMenu>
-        )}
         <IconButton
           className={ui("desktop-file-toggle")}
           variant="toolbar"
@@ -266,7 +217,85 @@ export function SessionHeader({
             <PanelRightOpen size={18} />
           )}
         </IconButton>
+        <ButtonLink
+          to="/settings"
+          variant="toolbar"
+          size="icon"
+          className={ui("session-settings-link")}
+          aria-label={t("设置")}
+          title={t("设置")}
+        >
+          <Settings size={17} />
+        </ButtonLink>
+        <ActionMenu label={t("更多会话操作")}>
+          {!active && (
+            <ActionMenuItem
+              disabled={controlBusy !== null}
+              onClick={() => void onControl("resume")}
+            >
+              <Play size={14} />
+              {controlBusy === "resume" ? t("恢复中…") : t("恢复")}
+            </ActionMenuItem>
+          )}
+          <ActionMenuItem active={systemOpen} onClick={onToggleSystem}>
+            <Info size={14} />
+            {t("系统")}
+          </ActionMenuItem>
+          {treeAvailable && (
+            <ActionMenuItem active={treeOpen} onClick={onToggleTree}>
+              <GitBranch size={14} />
+              {t("分支")}
+            </ActionMenuItem>
+          )}
+          <ActionMenuItem
+            active={terminalOpen}
+            title={`${t("终端")} (Ctrl/⌘+\`)`}
+            onClick={onToggleTerminal}
+          >
+            <TerminalSquare size={14} />
+            {t("终端")}
+          </ActionMenuItem>
+          <ActionMenuItem onClick={onExport}>
+            <Download size={14} />
+            {t("导出")}
+          </ActionMenuItem>
+          {canReplayLast && !retryablePrompt && lastUserPrompt && (
+            <ActionMenuItem
+              disabled={replayBusy}
+              onClick={() =>
+                void onReplayLastPrompt(lastUserPrompt, session.status)
+              }
+            >
+              <RefreshCcw size={14} />
+              {replayBusy ? t("正在重新发送…") : t("重新发送最后一条")}
+            </ActionMenuItem>
+          )}
+          {active && (
+            <ActionMenuItem
+              danger
+              aria-label={t("关闭会话")}
+              disabled={controlBusy !== null}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    t("关闭会释放当前 Pi Worker。历史仍会保留，之后可以恢复。继续吗？")
+                  )
+                ) {
+                  void onControl("close");
+                }
+              }}
+            >
+              <X size={14} />
+              {controlBusy === "close" ? t("关闭中…") : t("关闭")}
+            </ActionMenuItem>
+          )}
+        </ActionMenu>
       </div>
     </header>
   );
+}
+
+function shortModelName(model: string | null): string {
+  if (!model) return "";
+  return model.split("/").at(-1) ?? model;
 }

@@ -36,6 +36,7 @@ function messageToPrompt(message: PiMessage): RetryablePrompt | null {
       ? { message: message.content, images: [] }
       : null;
   }
+  if (!Array.isArray(message.content)) return null;
   const text = message.content
     .filter(
       (block) => block.type === "text" && typeof block.text === "string"

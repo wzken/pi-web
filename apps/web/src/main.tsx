@@ -6,6 +6,7 @@ import { ToastProvider } from "./components";
 import { App } from "./App";
 import { ThemeProvider } from "./theme";
 import { LanguageProvider } from "./i18n";
+import "./mdui/register";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

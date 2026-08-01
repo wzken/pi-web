@@ -30,16 +30,23 @@ export function FilePreview({
   const markdown =
     entry.name.endsWith(".md") || entry.name.endsWith(".markdown");
   return (
-    <div className={ui("file-preview")}>
-      <header>
-        <div>
-          <strong>{entry.name}</strong>
-          <span>
+    <section
+      className={ui(
+        `file-preview file-preview-pane file-preview-kind-${entry.preview}`
+      )}
+    >
+      <header className={ui("file-preview-header")}>
+        <div className={ui("file-preview-heading")}>
+          <span className={ui("file-preview-location")} title={entry.path}>
+            {entry.path.replaceAll("\\", "/")}
+          </span>
+          <strong className={ui("file-preview-title")}>{entry.name}</strong>
+          <span className={ui("file-preview-meta")}>
             {entry.mime ?? "application/octet-stream"} ·{" "}
             {formatBytes(entry.size)}
           </span>
         </div>
-        <div>
+        <div className={ui("file-preview-actions")}>
           <ButtonLink
             to={raw}
             variant="toolbar"
@@ -60,23 +67,44 @@ export function FilePreview({
           </IconButton>
         </div>
       </header>
-      <div className={ui("preview-body")}>
+      <div className={ui("preview-body file-preview-canvas")}>
         {entry.preview === "text" && content !== undefined ? (
           markdown ? (
-            <Markdown>{content}</Markdown>
+            <div className={ui("file-preview-document file-preview-markdown")}>
+              <Markdown>{content}</Markdown>
+            </div>
           ) : (
-            <pre className={ui("code-preview")}>{content}</pre>
+            <pre className={ui("code-preview file-preview-code")}>
+              {content}
+            </pre>
           )
         ) : entry.preview === "image" ? (
-          <img src={raw} alt={entry.name} />
+          <img
+            className={ui("file-preview-media file-preview-image")}
+            src={raw}
+            alt={entry.name}
+          />
         ) : entry.preview === "audio" ? (
-          <audio controls src={raw} />
+          <audio
+            className={ui("file-preview-media file-preview-audio")}
+            controls
+            src={raw}
+          />
         ) : entry.preview === "video" ? (
-          <video controls src={raw} />
+          <video
+            className={ui("file-preview-media file-preview-video")}
+            controls
+            src={raw}
+          />
         ) : entry.preview === "pdf" ? (
-          <iframe src={raw} title={entry.name} sandbox="" />
+          <iframe
+            className={ui("file-preview-frame")}
+            src={raw}
+            title={entry.name}
+            sandbox=""
+          />
         ) : (
-          <div className={ui("download-only")}>
+          <div className={ui("download-only file-preview-download")}>
             <File size={28} />
             <p>{t("浏览器无法安全预览此格式。")}</p>
             <a className={ui("button button-secondary")} href={`${raw}&download=1`}>
@@ -85,7 +113,7 @@ export function FilePreview({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 

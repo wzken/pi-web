@@ -7,6 +7,7 @@ import type { SessionDetailState } from "../types";
 import {
   applyRealtimeEvent,
   mergeActivityEvent,
+  shouldReconcileSnapshot,
   snapshotToolEvents
 } from "./session-events";
 
@@ -19,8 +20,10 @@ function makeSnapshot(
       status: "running"
     },
     messages: [],
-    entries: [],
     state,
+    sessionStats: null,
+    recentToolEvents: [],
+    liveText: "",
     queuedMessages: { steering: [], followUp: [] },
     tree: null,
     sequence: 4,
@@ -52,8 +55,8 @@ function makeState(): SessionDetailState {
     connectionState: "connected",
     replayBusy: false,
     controlBusy: null,
-    clock: 0,
-    queuedMessages: { steering: [], followUp: [] }
+    firstItemIndex: 1_000_000,
+    clock: 0
   };
 }
 
@@ -62,9 +65,10 @@ describe("session events", () => {
     const event = makeEvent("pi.tool_execution_start", {
       toolCallId: "tool-1"
     });
-    const snapshot = makeSnapshot({
+    const snapshot = {
+      ...makeSnapshot(),
       recentToolEvents: [event, null, { type: "invalid" }]
-    });
+    } as unknown as SessionSnapshot;
 
     expect(snapshotToolEvents(snapshot)).toEqual([event]);
   });
@@ -113,6 +117,66 @@ describe("session events", () => {
     expect(settled.snapshot?.session.status).toBe("waiting");
   });
 
+  it("bounds the browser's rebuildable live-text projection", () => {
+    const next = applyRealtimeEvent(
+      { ...makeState(), liveText: "a".repeat(750_000) },
+      makeEvent("pi.message_update", {
+        delta: { text: "b".repeat(750_000) }
+      })
+    );
+
+    expect(next.liveText).toHaveLength(1_000_000);
+    expect(next.liveText.startsWith("a")).toBe(true);
+    expect(next.liveText.endsWith("b")).toBe(true);
+  });
+
+  it("clears streaming text only at ordered Pi lifecycle boundaries", () => {
+    const state = { ...makeState(), liveText: "old response" };
+    const started = applyRealtimeEvent(
+      state,
+      makeEvent("pi.agent_start", {}, 5)
+    );
+    const streamed = applyRealtimeEvent(
+      started,
+      makeEvent("pi.message_update", { delta: "new response" }, 6)
+    );
+    const ended = applyRealtimeEvent(
+      streamed,
+      makeEvent("pi.message_end", {}, 7)
+    );
+
+    expect(started.liveText).toBe("");
+    expect(streamed.liveText).toBe("new response");
+    expect(ended.liveText).toBe("");
+  });
+
+  it("ignores Pi thinking and tool-call streaming in live answer text", () => {
+    const thinking = applyRealtimeEvent(
+      makeState(),
+      makeEvent("pi.message_update", {
+        assistantMessageEvent: {
+          type: "thinking_delta",
+          delta: "private reasoning"
+        }
+      })
+    );
+    const toolCall = applyRealtimeEvent(
+      thinking,
+      makeEvent(
+        "pi.message_update",
+        {
+          assistantMessageEvent: {
+            type: "toolcall_delta",
+            delta: "{\"path\":\"secret\"}"
+          }
+        },
+        6
+      )
+    );
+
+    expect(toolCall.liveText).toBe("");
+  });
+
   it("replaces queued messages from realtime queue updates", () => {
     const next = applyRealtimeEvent(
       makeState(),
@@ -122,9 +186,21 @@ describe("session events", () => {
       })
     );
 
-    expect(next.queuedMessages).toEqual({
+    expect(next.snapshot?.queuedMessages).toEqual({
       steering: ["focus on errors"],
       followUp: ["summarize"]
     });
+  });
+
+  it("identifies events that close a projection segment", () => {
+    expect(
+      shouldReconcileSnapshot(makeEvent("pi.message_end", null))
+    ).toBe(true);
+    expect(
+      shouldReconcileSnapshot(makeEvent("pi.agent_settled", null))
+    ).toBe(true);
+    expect(
+      shouldReconcileSnapshot(makeEvent("pi.message_update", null))
+    ).toBe(false);
   });
 });

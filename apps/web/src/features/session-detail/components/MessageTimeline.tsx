@@ -17,6 +17,7 @@ import { ui } from "../../../ui";
 
 interface MessageTimelineProps {
   messages: PiMessage[];
+  firstItemIndex: number;
   activities: ActivityItem[];
   liveText: string;
   running: boolean;
@@ -26,6 +27,7 @@ interface MessageTimelineProps {
 
 export function MessageTimeline({
   messages,
+  firstItemIndex,
   activities,
   liveText,
   running,
@@ -88,6 +90,12 @@ export function MessageTimeline({
         ref={virtuoso}
         className={ui("message-virtuoso")}
         data={items}
+        firstItemIndex={firstItemIndex}
+        computeItemKey={(index, item) =>
+          item.kind === "message"
+            ? `message-${index}-${item.message.role}`
+            : item.key
+        }
         followOutput={atBottom ? "smooth" : false}
         atBottomStateChange={setAtBottom}
         itemContent={(_, item) => {
@@ -159,7 +167,7 @@ function MessageCard({ message }: { message: PiMessage }) {
         <div className={ui("message-label")}>
           {assistant ? message.model || "Pi" : role === "user" ? t("你") : role}
         </div>
-        <MessageContent content={message.content} />
+        <MessageContent message={message} />
         {assistant && message.stopReason && (
           <div className={ui("message-footnote")}>{message.stopReason}</div>
         )}
@@ -168,8 +176,15 @@ function MessageCard({ message }: { message: PiMessage }) {
   );
 }
 
-function MessageContent({ content }: { content: PiMessage["content"] }) {
+function MessageContent({ message }: { message: PiMessage }) {
+  const { content } = message;
   if (typeof content === "string") return <Markdown>{content}</Markdown>;
+  if (!Array.isArray(content)) {
+    if (typeof message.summary === "string") {
+      return <Markdown>{message.summary}</Markdown>;
+    }
+    return <pre>{pretty(message)}</pre>;
+  }
   return (
     <>
       {content.map((block, index) => (

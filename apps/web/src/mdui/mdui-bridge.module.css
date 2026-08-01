@@ -1,0 +1,264 @@
+.host {
+  box-sizing: border-box;
+  max-width: 100%;
+  font-family: inherit;
+}
+
+.button {
+  --shape-corner: var(--mdui-shape-corner-full);
+  box-sizing: border-box;
+  max-width: 100%;
+  font-family: inherit;
+  vertical-align: middle;
+}
+
+.button[data-app-size="sm"] {
+  height: 2.25rem;
+  min-height: 2.25rem;
+  font-size: 0.6875rem;
+}
+
+.button[data-app-size="sm"]::part(button) {
+  padding-inline: 0.75rem;
+}
+
+.button[data-app-size="md"] {
+  height: 2.5rem;
+  min-height: 2.5rem;
+  font-size: 0.75rem;
+}
+
+.button[data-app-size="lg"] {
+  height: 3rem;
+  min-height: 3rem;
+  font-size: 0.8125rem;
+}
+
+.button[data-app-size="lg"]::part(button) {
+  padding-inline: 1.5rem;
+}
+
+.button[data-app-size="icon"] {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+}
+
+.button[data-app-size="icon"]::part(button) {
+  padding-inline: 0;
+}
+
+.button[data-app-full-width="true"] {
+  display: block;
+  width: 100%;
+}
+
+.button[data-loading="true"] .buttonContent {
+  display: none;
+}
+
+.button[data-active="true"] {
+  --mdui-color-secondary-container: var(--mdui-color-primary-container);
+  --mdui-color-on-secondary-container: var(
+    --mdui-color-on-primary-container
+  );
+}
+
+.button[data-app-variant="danger"] {
+  --mdui-color-secondary-container: var(--mdui-color-error-container);
+  --mdui-color-on-secondary-container: var(--mdui-color-on-error-container);
+}
+
+.button[data-app-variant="danger"]::part(button) {
+  color: rgb(var(--mdui-color-on-error-container));
+}
+
+.buttonContent,
+.buttonLoading {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.buttonLoading {
+  white-space: nowrap;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.iconButton {
+  --shape-corner: var(--mdui-shape-corner-full);
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  font-family: inherit;
+  vertical-align: middle;
+}
+
+.iconButton[data-app-size="sm"] {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  font-size: 1.25rem;
+}
+
+.iconButton[data-app-size="md"],
+.iconButton[data-app-size="icon"] {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  font-size: 1.5rem;
+}
+
+.iconButton[data-active="true"] {
+  --mdui-color-secondary-container: var(--mdui-color-primary-container);
+  --mdui-color-on-secondary-container: var(
+    --mdui-color-on-primary-container
+  );
+}
+
+.iconButton[data-app-variant="danger"] {
+  --mdui-color-primary: var(--mdui-color-error);
+  --mdui-color-on-primary: var(--mdui-color-on-error);
+}
+
+.iconButton[data-app-variant="danger"]::part(button) {
+  color: rgb(var(--mdui-color-on-error));
+}
+
+.tooltip {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.dialog {
+  box-sizing: border-box;
+  width: auto !important;
+  max-width: none !important;
+  padding: clamp(1rem, 5vw, 3rem);
+  font-family: inherit;
+}
+
+.dialog::part(panel) {
+  box-sizing: border-box;
+  width: min(calc(100vw - 2rem), var(--app-dialog-max-width, 35rem));
+  max-width: min(calc(100vw - 2rem), var(--app-dialog-max-width, 35rem));
+}
+
+.dialog::part(body) {
+  overflow-x: hidden;
+}
+
+/*
+ * Uploaded theme CSS cannot cross MDUI's shadow boundary. The legacy `.dialog`
+ * class remains on the slotted content, while these documented tokens bridge
+ * the surface that is actually painted by MDUI's panel part.
+ */
+:global(html[data-theme-source="uploaded"]) .dialog {
+  --shape-corner: var(--radius, var(--mdui-shape-corner-extra-large));
+}
+
+:global(html[data-theme-source="uploaded"]) .dialog::part(panel) {
+  border: 1px solid var(--line);
+  color: var(--text);
+  background-color: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.progress {
+  display: inline-flex;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+}
+
+.switch {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+
+.dropdown {
+  --z-index: 120;
+  position: relative;
+  z-index: 120;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.menu {
+  box-sizing: border-box;
+  min-width: var(--app-menu-min-width, 10rem);
+  max-width: min(calc(100vw - 2rem), var(--app-menu-max-width, 17.5rem));
+}
+
+.menuItem {
+  box-sizing: border-box;
+  min-width: 0;
+  font-family: inherit;
+}
+
+.menuItem::part(label) {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.menuItem[data-active="true"] {
+  --mdui-color-on-surface: var(--mdui-color-on-primary-container);
+  background: rgb(var(--mdui-color-primary-container));
+}
+
+.menuItem[data-active="true"]::part(label) {
+  color: rgb(var(--mdui-color-on-primary-container));
+  font-weight: 700;
+}
+
+.menuItem[data-danger="true"] {
+  --mdui-color-primary: var(--mdui-color-error);
+  --mdui-color-on-surface: var(--mdui-color-error);
+  --mdui-color-on-surface-variant: var(--mdui-color-error);
+}
+
+.menuItem[data-danger="true"]::part(container),
+.menuItem[data-danger="true"]::part(label) {
+  color: rgb(var(--mdui-color-error));
+}
+
+.menuItem[data-danger="true"][data-active="true"] {
+  --mdui-color-on-surface: var(--mdui-color-on-error-container);
+  background: rgb(var(--mdui-color-error-container));
+}
+
+.menuItem[data-danger="true"][data-active="true"]::part(container),
+.menuItem[data-danger="true"][data-active="true"]::part(label) {
+  color: rgb(var(--mdui-color-on-error-container));
+}
+
+@media (max-width: 600px) {
+  .dialog {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .dialog::part(panel) {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-radius: var(--mdui-shape-corner-extra-large)
+      var(--mdui-shape-corner-extra-large) 0 0;
+  }
+}

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiWebConfig } from "@pi-web/config";
-import { AuthManager, shouldUseSecureCookie } from "./auth.js";
+import { hashAccessKey, PiWebError } from "@pi-web/shared";
+import {
+  AuthManager,
+  pruneLoginAttempts,
+  shouldUseSecureCookie
+} from "./auth.js";
 import type { SessiondClient } from "./sessiond-client.js";
 
 const config = {
@@ -102,6 +107,106 @@ describe("server authentication policy", () => {
     const restarted = new AuthManager(client, config);
     await restarted.initialize();
     expect(restarted.validate(token)).toBe(false);
+    expect(
+      (settings.get("auth_sessions") as { generation: number }).generation
+    ).toBe(2);
+  });
+
+  it.each([
+    ["malformed", "not-a-number"],
+    ["null", null],
+    ["maximum safe integer", Number.MAX_SAFE_INTEGER],
+    ["unsafe integer", Number.MAX_SAFE_INTEGER + 1]
+  ])(
+    "self-heals a %s persisted login generation",
+    async (_label, generation) => {
+      process.env.PI_WEB_ACCESS_KEY = "expected-secret";
+      let persisted: unknown = {
+        version: 1,
+        keyFingerprint: "stale-fingerprint",
+        generation,
+        sessions: []
+      };
+      const client = {
+        request: vi.fn(async (method: string, params?: unknown) => {
+          if (method === "auth.get_sessions") return persisted;
+          if (method === "auth.set_sessions") {
+            persisted = (params as { sessions: unknown }).sessions;
+          }
+          return null;
+        })
+      } as unknown as SessiondClient;
+      const auth = new AuthManager(
+        client,
+        config,
+        async () => undefined,
+        async () => true
+      );
+
+      await auth.initialize();
+      expect((persisted as { generation: number }).generation).toBe(1);
+
+      const { token } = await auth.login(
+        "expected-secret",
+        "198.51.100.30"
+      );
+      expect(auth.validate(token)).toBe(true);
+    }
+  );
+
+  it("keeps a key-reset generation bounded at the safe-integer limit", async () => {
+    delete process.env.PI_WEB_ACCESS_KEY;
+    const settings = new Map<string, unknown>([
+      ["access_key_hash", await hashAccessKey("old-access-key")]
+    ]);
+    const client = {
+      request: vi.fn(async (method: string, params?: unknown) => {
+        if (method === "auth.get_hash") {
+          return settings.get("access_key_hash") ?? null;
+        }
+        if (method === "auth.get_sessions") {
+          return settings.get("auth_sessions") ?? null;
+        }
+        if (method === "auth.set_sessions") {
+          settings.set(
+            "auth_sessions",
+            (params as { sessions: unknown }).sessions
+          );
+        }
+        return null;
+      }),
+      rotateAccessKey: vi.fn(async (input) => {
+        settings.set("access_key_hash", input.hash);
+        settings.delete("auth_sessions");
+        return { updated: true as const };
+      })
+    } as unknown as SessiondClient;
+    const seed = new AuthManager(
+      client,
+      config,
+      async () => undefined,
+      async () => true
+    );
+    await seed.initialize();
+    settings.set("auth_sessions", {
+      ...(settings.get("auth_sessions") as Record<string, unknown>),
+      generation: Number.MAX_SAFE_INTEGER
+    });
+    const auth = new AuthManager(
+      client,
+      config,
+      async () => undefined,
+      async () => true
+    );
+    await auth.initialize();
+
+    const key = await auth.reset();
+    const { token } = await auth.login(key, "198.51.100.31");
+
+    expect(auth.validate(token)).toBe(true);
+    expect(
+      (settings.get("auth_sessions") as { generation: number }).generation
+    ).toBe(1);
   });
 
   it("serializes concurrent login failures before calculating backoff", async () => {
@@ -124,5 +229,213 @@ describe("server authentication policy", () => {
     expect(attempts.every((attempt) => attempt.status === "rejected")).toBe(true);
     expect(delays).toEqual([150, 600]);
     expect(client.request).toHaveBeenCalledTimes(5);
+  });
+
+  it("expires stale login attempts and evicts the oldest remotes at capacity", () => {
+    const now = 2 * 60 * 60 * 1000;
+    const attempts = new Map<
+      string,
+      { failures: number; lastFailure: number }
+    >([
+      ["expired", { failures: 2, lastFailure: 0 }],
+      ...Array.from({ length: 2048 }, (_, index) => [
+        `remote-${index}`,
+        { failures: 1, lastFailure: now - 1000 + index }
+      ] as const)
+    ]);
+
+    pruneLoginAttempts(attempts, now, "new-remote");
+
+    expect(attempts.has("expired")).toBe(false);
+    expect(attempts.has("remote-0")).toBe(false);
+    expect(attempts.has("remote-2047")).toBe(true);
+    expect(attempts.size).toBe(2047);
+  });
+
+  it("rejects an old key whose verification finishes after reset", async () => {
+    delete process.env.PI_WEB_ACCESS_KEY;
+    const oldHash = await hashAccessKey("old-access-key");
+    const settings = new Map<string, unknown>([
+      ["access_key_hash", oldHash]
+    ]);
+    const client = {
+      request: vi.fn(async (method: string, params?: unknown) => {
+        if (method === "auth.get_hash") {
+          return settings.get("access_key_hash") ?? null;
+        }
+        if (method === "auth.get_sessions") {
+          return settings.get("auth_sessions") ?? null;
+        }
+        if (method === "auth.set_hash") {
+          settings.set(
+            "access_key_hash",
+            (params as { hash: unknown }).hash
+          );
+        }
+        if (method === "auth.set_sessions") {
+          settings.set(
+            "auth_sessions",
+            (params as { sessions: unknown }).sessions
+          );
+        }
+        return null;
+      }),
+      rotateAccessKey: vi.fn(async (input) => {
+        settings.set("access_key_hash", input.hash);
+        settings.delete("auth_sessions");
+        return { updated: true as const };
+      })
+    } as unknown as SessiondClient;
+    let completeVerification: ((valid: boolean) => void) | undefined;
+    const verify = vi.fn(
+      async () =>
+        await new Promise<boolean>((resolve) => {
+          completeVerification = resolve;
+        })
+    );
+    const auth = new AuthManager(
+      client,
+      config,
+      async () => undefined,
+      verify
+    );
+    await auth.initialize();
+
+    const login = auth.login("old-access-key", "198.51.100.10");
+    await vi.waitFor(() => expect(verify).toHaveBeenCalledOnce());
+    await auth.reset();
+    expect(client.rotateAccessKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auditType: "access_key.reset",
+        actor: "web"
+      })
+    );
+    completeVerification?.(true);
+
+    await expect(login).rejects.toMatchObject({
+      code: "INVALID_ACCESS_KEY",
+      statusCode: 401
+    });
+  });
+
+  it("serializes persisted session snapshots across different remotes", async () => {
+    process.env.PI_WEB_ACCESS_KEY = "expected-secret";
+    let persistCount = 0;
+    let releaseFirstPersist: (() => void) | undefined;
+    let blockPersist = false;
+    const client = {
+      request: vi.fn(async (method: string) => {
+        if (method === "auth.get_sessions") return null;
+        if (method === "auth.set_sessions") {
+          persistCount += 1;
+          if (blockPersist && persistCount === 1) {
+            await new Promise<void>((resolve) => {
+              releaseFirstPersist = resolve;
+            });
+          }
+        }
+        return null;
+      })
+    } as unknown as SessiondClient;
+    const auth = new AuthManager(
+      client,
+      config,
+      async () => undefined,
+      async () => true
+    );
+    await auth.initialize();
+    persistCount = 0;
+    blockPersist = true;
+
+    const first = auth.login("expected-secret", "198.51.100.11");
+    const second = auth.login("expected-secret", "198.51.100.12");
+    await vi.waitFor(() => expect(persistCount).toBe(1));
+    expect(releaseFirstPersist).toBeTypeOf("function");
+    releaseFirstPersist?.();
+    await Promise.all([first, second]);
+
+    expect(persistCount).toBe(2);
+  });
+
+  it("keeps the old key and sessions when atomic reset persistence fails", async () => {
+    delete process.env.PI_WEB_ACCESS_KEY;
+    const oldHash = await hashAccessKey("old-access-key");
+    const settings = new Map<string, unknown>([
+      ["access_key_hash", oldHash]
+    ]);
+    const resetFailure = new PiWebError(
+      "SESSIOND_UNAVAILABLE",
+      "Session daemon is unavailable",
+      503
+    );
+    const client = {
+      request: vi.fn(async (method: string, params?: unknown) => {
+        if (method === "auth.get_hash") {
+          return settings.get("access_key_hash") ?? null;
+        }
+        if (method === "auth.get_sessions") {
+          return settings.get("auth_sessions") ?? null;
+        }
+        if (method === "auth.set_sessions") {
+          settings.set(
+            "auth_sessions",
+            (params as { sessions: unknown }).sessions
+          );
+        }
+        return null;
+      }),
+      rotateAccessKey: vi.fn().mockRejectedValue(resetFailure)
+    } as unknown as SessiondClient;
+    const auth = new AuthManager(client, config);
+    await auth.initialize();
+    const { token } = await auth.login("old-access-key", "198.51.100.20");
+
+    await expect(auth.reset()).rejects.toBe(resetFailure);
+
+    expect(auth.validate(token)).toBe(true);
+    await expect(
+      auth.login("old-access-key", "198.51.100.21")
+    ).resolves.toEqual(expect.objectContaining({ token: expect.any(String) }));
+    expect(settings.get("access_key_hash")).toEqual(oldHash);
+  });
+
+  it("rolls back a login token when session persistence fails", async () => {
+    process.env.PI_WEB_ACCESS_KEY = "expected-secret";
+    let failPersistence = false;
+    let lastPersisted: unknown;
+    const client = {
+      request: vi.fn(async (method: string, params?: unknown) => {
+        if (method === "auth.get_sessions") return null;
+        if (method === "auth.set_sessions") {
+          if (failPersistence) {
+            throw new PiWebError(
+              "SESSIOND_UNAVAILABLE",
+              "Session daemon is unavailable",
+              503
+            );
+          }
+          lastPersisted = (params as { sessions: unknown }).sessions;
+        }
+        return null;
+      })
+    } as unknown as SessiondClient;
+    const auth = new AuthManager(
+      client,
+      config,
+      async () => undefined,
+      async () => true
+    );
+    await auth.initialize();
+
+    failPersistence = true;
+    await expect(
+      auth.login("expected-secret", "198.51.100.13")
+    ).rejects.toMatchObject({ code: "SESSIOND_UNAVAILABLE" });
+    failPersistence = false;
+    await auth.login("expected-secret", "198.51.100.14");
+
+    expect(
+      (lastPersisted as { sessions: unknown[] }).sessions
+    ).toHaveLength(1);
   });
 });

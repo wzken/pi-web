@@ -8,6 +8,7 @@ import {
   useState,
   type PropsWithChildren
 } from "react";
+import { setTheme as setMduiTheme } from "mdui/functions/setTheme.js";
 import { t } from "./i18n";
 import type {
   InstalledTheme,
@@ -16,18 +17,31 @@ import type {
 } from "@pi-web/protocol";
 import { themeTokenNames } from "@pi-web/protocol/theme-tokens";
 import { api, isAbortError, jsonBody } from "./api";
+import {
+  applyMaterialThemeSettingsToRoot,
+  applyThemePackMduiTokensToRoot,
+  clearMaterialThemeTokens,
+  materialThemeSettingsStorageKey,
+  normalizeMaterialThemeSettings,
+  persistMaterialThemeSettings,
+  readMaterialThemeSettings,
+  type MaterialThemeSettings
+} from "./theme-customization";
+
+const defaultThemeId = "pi-neutral";
 
 interface ThemeContextValue {
   catalog: ThemeCatalog | null;
   activeTheme: InstalledTheme | null;
   resolvedColorScheme: "light" | "dark";
+  materialThemeSettings: MaterialThemeSettings;
+  effectiveMaterialThemeSettings: MaterialThemeSettings;
   loading: boolean;
   safeMode: boolean;
-  refresh(): Promise<ThemeCatalog>;
   previewPreferences(value: ThemePreferences | null): void;
   updatePreferences(value: ThemePreferences): Promise<ThemeCatalog>;
-  installTheme(file: File): Promise<ThemeCatalog>;
-  removeTheme(id: string): Promise<ThemeCatalog>;
+  previewMaterialThemeSettings(value: MaterialThemeSettings | null): void;
+  applyMaterialThemeSettings(value: MaterialThemeSettings): void;
   uploadBackground(file: File): Promise<ThemeCatalog>;
   removeBackground(): Promise<ThemeCatalog>;
 }
@@ -39,6 +53,10 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   const [catalog, setCatalog] = useState<ThemeCatalog | null>(null);
   const [preferencePreview, setPreferencePreview] =
     useState<ThemePreferences | null>(null);
+  const [materialThemeSettings, setMaterialThemeSettings] =
+    useState<MaterialThemeSettings>(() => readMaterialThemeSettings());
+  const [materialThemePreview, setMaterialThemePreview] =
+    useState<MaterialThemeSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [systemColorScheme, setSystemColorScheme] = useState<"light" | "dark">(
     () => systemScheme()
@@ -47,12 +65,6 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     () => new URLSearchParams(window.location.search).get("safe-theme") === "1",
     []
   );
-
-  const refresh = useCallback(async () => {
-    const next = await api<ThemeCatalog>("/api/themes");
-    setCatalog(next);
-    return next;
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -79,6 +91,20 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => {
+    const updateFromStorage = (event: StorageEvent) => {
+      if (
+        event.storageArea === window.localStorage &&
+        event.key === materialThemeSettingsStorageKey
+      ) {
+        setMaterialThemeSettings(readMaterialThemeSettings());
+        setMaterialThemePreview(null);
+      }
+    };
+    window.addEventListener("storage", updateFromStorage);
+    return () => window.removeEventListener("storage", updateFromStorage);
+  }, []);
+
+  useEffect(() => {
     if (!catalog) return;
     rememberColorMode(catalog.preferences.colorMode);
   }, [catalog]);
@@ -98,16 +124,45 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     return resolveActiveTheme(effectiveCatalog, resolvedColorScheme, safeMode);
   }, [effectiveCatalog, resolvedColorScheme, safeMode]);
 
+  const effectiveMaterialThemeSettings =
+    materialThemePreview ?? materialThemeSettings;
+
   useLayoutEffect(() => {
     applyTheme(
       activeTheme,
       safeMode ? null : effectiveCatalog,
       resolvedColorScheme
     );
+    if (activeTheme) {
+      applyThemePackMduiTokensToRoot(
+        document.documentElement,
+        themeTokensForScheme(activeTheme, resolvedColorScheme)
+      );
+    }
+    const materialTokens =
+      safeMode || !effectiveMaterialThemeSettings.enabled
+      ? null
+      : applyMaterialThemeSettingsToRoot(
+          document.documentElement,
+          effectiveMaterialThemeSettings,
+          resolvedColorScheme
+        );
+    const themeColor = document.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]'
+    );
+    if (themeColor && materialTokens) {
+      themeColor.content = materialTokens["--md-sys-color-surface"] ?? "";
+    }
     return () => {
       document.getElementById("pi-web-theme-css")?.remove();
     };
-  }, [activeTheme, effectiveCatalog, resolvedColorScheme, safeMode]);
+  }, [
+    activeTheme,
+    effectiveCatalog,
+    effectiveMaterialThemeSettings,
+    resolvedColorScheme,
+    safeMode
+  ]);
 
   const updatePreferences = useCallback(async (value: ThemePreferences) => {
     const next = await api<ThemeCatalog>("/api/themes/preferences", {
@@ -123,24 +178,23 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     setPreferencePreview(value);
   }, []);
 
-  const installTheme = useCallback(async (file: File) => {
-    const next = await api<ThemeCatalog>("/api/themes/install", {
-      method: "POST",
-      headers: { "Content-Type": "application/zip" },
-      body: file
-    });
-    setCatalog(next);
-    return next;
-  }, []);
+  const previewMaterialThemeSettings = useCallback(
+    (value: MaterialThemeSettings | null) => {
+      setMaterialThemePreview(
+        value ? normalizeMaterialThemeSettings(value) : null
+      );
+    },
+    []
+  );
 
-  const removeTheme = useCallback(async (id: string) => {
-    const next = await api<ThemeCatalog>(
-      `/api/themes/${encodeURIComponent(id)}`,
-      { method: "DELETE" }
-    );
-    setCatalog(next);
-    return next;
-  }, []);
+  const applyMaterialThemeSettings = useCallback(
+    (value: MaterialThemeSettings) => {
+      const next = persistMaterialThemeSettings(value);
+      setMaterialThemeSettings(next);
+      setMaterialThemePreview(null);
+    },
+    []
+  );
 
   const uploadBackground = useCallback(async (file: File) => {
     const next = await api<ThemeCatalog>("/api/themes/background", {
@@ -165,25 +219,27 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       catalog,
       activeTheme,
       resolvedColorScheme,
+      materialThemeSettings,
+      effectiveMaterialThemeSettings,
       loading,
       safeMode,
-      refresh,
       previewPreferences,
       updatePreferences,
-      installTheme,
-      removeTheme,
+      previewMaterialThemeSettings,
+      applyMaterialThemeSettings,
       uploadBackground,
       removeBackground
     }),
     [
       activeTheme,
+      applyMaterialThemeSettings,
       catalog,
-      installTheme,
+      effectiveMaterialThemeSettings,
       loading,
+      materialThemeSettings,
+      previewMaterialThemeSettings,
       previewPreferences,
-      refresh,
       removeBackground,
-      removeTheme,
       resolvedColorScheme,
       safeMode,
       updatePreferences,
@@ -207,18 +263,20 @@ export function resolveActiveTheme(
 ): InstalledTheme | null {
   if (!catalog) return null;
   if (safeMode) {
-    return catalog.themes.find((theme) => theme.id === "agegr-light") ?? null;
+    return catalog.themes.find((theme) => theme.id === defaultThemeId) ?? null;
   }
   const selected =
     catalog.themes.find((theme) => theme.id === catalog.preferences.themeId) ??
-    catalog.themes.find((theme) => theme.id === "agegr-light") ??
+    catalog.themes.find((theme) => theme.id === defaultThemeId) ??
     null;
   if (!selected || themeSupportsColorScheme(selected, resolvedColorScheme)) {
     return selected;
   }
   return (
     catalog.themes.find(
-      (theme) => theme.id === `agegr-${resolvedColorScheme}`
+      (theme) =>
+        theme.id === defaultThemeId &&
+        themeSupportsColorScheme(theme, resolvedColorScheme)
     ) ??
     catalog.themes.find(
       (theme) => themeSupportsColorScheme(theme, resolvedColorScheme)
@@ -268,14 +326,16 @@ function applyTheme(
   for (const token of themeTokenNames) {
     root.style.removeProperty(token);
   }
+  clearMaterialThemeTokens(root);
   root.dataset.colorMode = resolvedColorScheme;
   root.style.colorScheme = resolvedColorScheme;
+  setMduiTheme(resolvedColorScheme, root);
   const themeColor = document.querySelector<HTMLMetaElement>(
     'meta[name="theme-color"]'
   );
   if (themeColor) {
     themeColor.content =
-      resolvedColorScheme === "dark" ? "#111411" : "#fbfbfa";
+      resolvedColorScheme === "dark" ? "#0b0b0c" : "#f7f7f8";
   }
   if (!theme) {
     root.removeAttribute("data-theme-id");
@@ -289,6 +349,11 @@ function applyTheme(
   const tokens = themeTokensForScheme(theme, resolvedColorScheme);
   for (const [name, value] of Object.entries(tokens)) {
     root.style.setProperty(name, value);
+  }
+  if (themeColor) {
+    themeColor.content =
+      tokens["--bg"] ??
+      (resolvedColorScheme === "dark" ? "#0b0b0c" : "#f7f7f8");
   }
 
   if (theme.cssUrl && catalog) {
@@ -333,6 +398,18 @@ function applyTheme(
   root.style.setProperty("--app-background-overlay", String(overlay ?? 0.18));
   root.style.setProperty("--app-background-blur", `${blur ?? 0}px`);
 }
+
+export {
+  defaultMaterialThemeSettings,
+  getThemeColorPreset,
+  materialThemeSettingsStorageKey,
+  themeColorPresets,
+  themeColorRoles,
+  type MaterialThemeSettings,
+  type ThemeColorPreset,
+  type ThemeColorRole,
+  type ThemeSeedColors
+} from "./theme-customization";
 
 function systemScheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches

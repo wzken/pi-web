@@ -20,21 +20,20 @@ afterEach(async () => {
 });
 
 describe("ThemeService", () => {
-  it("uses the agegr-inspired built-in theme by default", async () => {
+  it("uses the dual-mode neutral built-in theme by default", async () => {
     const catalog = await service.catalog();
-    expect(catalog.preferences.themeId).toBe("agegr-light");
+    expect(catalog.preferences.themeId).toBe("pi-neutral");
     expect(catalog.preferences.colorMode).toBe("system");
     expect(catalog.themes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "agegr-light",
+          id: "pi-neutral",
           source: "built-in",
-          colorScheme: "light"
-        }),
-        expect.objectContaining({
-          id: "agegr-dark",
-          source: "built-in",
-          colorScheme: "dark"
+          schemaVersion: 2,
+          schemes: {
+            light: { tokens: expect.any(Object) },
+            dark: { tokens: expect.any(Object) }
+          }
         })
       ])
     );
@@ -167,10 +166,97 @@ describe("ThemeService", () => {
     });
   });
 
+  it("rejects theme packages that try to override shell geometry", async () => {
+    const archive = zipSync({
+      "theme.json": strToU8(
+        JSON.stringify({
+          schemaVersion: 1,
+          id: "layout-override",
+          name: "Layout override",
+          version: "1",
+          tokens: { "--sidebar": "320px" }
+        })
+      )
+    });
+
+    await expect(service.install(Buffer.from(archive))).rejects.toMatchObject({
+      code: "THEME_MANIFEST_INVALID"
+    });
+  });
+
+  it("rejects shell geometry overrides in theme CSS", async () => {
+    const archive = zipSync({
+      "theme.json": strToU8(
+        JSON.stringify({
+          schemaVersion: 1,
+          id: "layout-css-override",
+          name: "Layout CSS override",
+          version: "1",
+          css: "theme.css"
+        })
+      ),
+      "theme.css": strToU8(":root { --workspace-app-rail: 320px; }")
+    });
+
+    await expect(service.install(Buffer.from(archive))).rejects.toMatchObject({
+      code: "THEME_CSS_LAYOUT_TOKEN"
+    });
+  });
+
+  it("does not reload an older installed theme with layout CSS", async () => {
+    const packageDir = join(
+      root,
+      "data",
+      "themes",
+      "packages",
+      "legacy-layout"
+    );
+    await mkdir(packageDir, { recursive: true });
+    await writeFile(
+      join(packageDir, "theme.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "legacy-layout",
+        name: "Legacy layout",
+        version: "1",
+        css: "theme.css"
+      }),
+      "utf8"
+    );
+    await writeFile(
+      join(packageDir, "theme.css"),
+      ":root { --sidebar: 320px; }",
+      "utf8"
+    );
+
+    const catalog = await service.catalog();
+    expect(catalog.themes.some((theme) => theme.id === "legacy-layout")).toBe(
+      false
+    );
+  });
+
+  it("keeps retired built-in IDs reserved", async () => {
+    const archive = zipSync({
+      "theme.json": strToU8(
+        JSON.stringify({
+          schemaVersion: 1,
+          id: "agegr-light",
+          name: "Retired theme",
+          version: "1",
+          colorScheme: "light"
+        })
+      )
+    });
+
+    await expect(service.install(Buffer.from(archive))).rejects.toMatchObject({
+      code: "THEME_ID_RESERVED"
+    });
+  });
+
   it("validates remote background URLs", async () => {
     await expect(
       service.updatePreferences({
-        themeId: "agegr-light",
+        themeId: "pi-neutral",
         background: {
           kind: "url",
           url: "file:///private/background.png",
@@ -189,7 +275,7 @@ describe("ThemeService", () => {
     await writeFile(
       join(configDir, "appearance.json"),
       JSON.stringify({
-        themeId: "agegr-light",
+        themeId: "pi-neutral",
         background: {
           kind: "none",
           url: "",
@@ -204,6 +290,41 @@ describe("ThemeService", () => {
 
     const catalog = await service.catalog();
     expect(catalog.preferences.colorMode).toBe("system");
+  });
+
+  it("migrates a removed built-in theme without discarding user appearance", async () => {
+    const configDir = join(root, "config");
+    await mkdir(configDir, { recursive: true });
+    await writeFile(
+      join(configDir, "appearance.json"),
+      JSON.stringify({
+        themeId: "agegr-dark",
+        colorMode: "dark",
+        background: {
+          kind: "url",
+          url: "https://example.com/background.jpg",
+          fit: "contain",
+          position: "top",
+          overlay: 0.42,
+          blur: 3
+        }
+      }),
+      "utf8"
+    );
+
+    const catalog = await service.catalog();
+    expect(catalog.preferences).toMatchObject({
+      themeId: "pi-neutral",
+      colorMode: "dark",
+      background: {
+        kind: "url",
+        url: "https://example.com/background.jpg",
+        fit: "contain",
+        position: "top",
+        overlay: 0.42,
+        blur: 3
+      }
+    });
   });
 });
 

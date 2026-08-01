@@ -22,7 +22,10 @@ import { RetryLastPrompt } from "./RetryLastPrompt";
 import { SessionHeader } from "./SessionHeader";
 import { SessionRail } from "./SessionRail";
 import { SessionSystemPanel } from "./SessionSystemPanel";
-import { SessionTreePanel } from "./SessionTreePanel";
+import {
+  hasSessionTreeBranches,
+  SessionTreePanel
+} from "./SessionTreePanel";
 import { ui } from "../../../ui";
 
 const TerminalPanel = lazy(() =>
@@ -44,7 +47,6 @@ interface SessionDetailViewProps {
   onExport: () => void;
   onLoadEarlier: () => Promise<void>;
   onRetried: () => Promise<void>;
-  onSent: () => void;
   onRuntimeUpdated: () => Promise<void>;
 }
 
@@ -58,7 +60,6 @@ export function SessionDetailView({
   onExport,
   onLoadEarlier,
   onRetried,
-  onSent,
   onRuntimeUpdated
 }: SessionDetailViewProps) {
   const [filesOpen, setFilesOpen] = useState(false);
@@ -108,6 +109,7 @@ export function SessionDetailView({
           <SessionRail
             currentId={sessionId}
             cwd={session.cwd}
+            onClose={() => setRailOpen(false)}
             onSessionRenamed={onSessionRenamed}
           />
           <button
@@ -120,13 +122,14 @@ export function SessionDetailView({
       <section className={ui("conversation-pane")}>
         <SessionHeader
           snapshot={snapshot}
-          clock={state.clock}
           railOpen={railOpen}
           filesOpen={filesOpen}
           systemOpen={systemOpen}
           treeOpen={treeOpen}
           terminalOpen={terminalOpen}
-          treeAvailable={Boolean(snapshot.tree?.nodes.length)}
+          treeAvailable={
+            snapshot.tree ? hasSessionTreeBranches(snapshot.tree) : false
+          }
           replayBusy={state.replayBusy}
           controlBusy={state.controlBusy}
           onToggleRail={() => setRailOpen((value) => !value)}
@@ -163,7 +166,12 @@ export function SessionDetailView({
           </div>
         )}
 
-        {systemOpen && <SessionSystemPanel snapshot={snapshot} />}
+        {systemOpen && (
+          <SessionSystemPanel
+            snapshot={snapshot}
+            onClose={() => setSystemOpen(false)}
+          />
+        )}
         {treeOpen && snapshot.tree && (
           <SessionTreePanel tree={snapshot.tree} />
         )}
@@ -181,6 +189,7 @@ export function SessionDetailView({
         >
           <MessageTimeline
             messages={snapshot.messages}
+            firstItemIndex={state.firstItemIndex}
             activities={state.activities}
             liveText={state.liveText}
             running={
@@ -232,9 +241,8 @@ export function SessionDetailView({
             model={session.model}
             thinkingLevel={session.thinkingLevel}
             connected={state.connectionState === "connected"}
-            queuedMessages={state.queuedMessages}
+            queuedMessages={snapshot.queuedMessages}
             onAbort={() => onControl("abort")}
-            onSent={onSent}
             onError={onError}
             onRuntimeUpdated={onRuntimeUpdated}
           />
@@ -260,9 +268,10 @@ export function SessionDetailView({
       )}
       {!filesOpen && !terminalOpen && (
         <button
+          type="button"
           className={ui("mobile-file-fab")}
           onClick={() => setFilesOpen(true)}
-          aria-label={t("打开文件")}
+          aria-label={t("打开文件面板")}
         >
           <FolderOpen size={20} />
         </button>

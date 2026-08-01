@@ -157,8 +157,14 @@ export function FileBrowser({
 
   const segments = path.split(/[\\/]/).filter(Boolean);
   return (
-    <div className={ui(`file-browser${compact ? " file-browser-compact" : ""}`)}>
-      <header className={ui("file-header")}>
+    <div
+      className={ui(
+        `file-browser file-inspector${compact ? " file-browser-compact" : ""}${
+          selected ? " has-file-preview" : ""
+        }`
+      )}
+    >
+      <header className={ui("file-header file-inspector-toolbar")}>
         <div>
           <p className={ui("eyebrow")}>WORKSPACE</p>
           <h2>{t("文件")}</h2>
@@ -187,86 +193,113 @@ export function FileBrowser({
           </IconButton>
         </div>
       </header>
-      <div className={ui("file-root")} title={cwd}>
-        <FolderOpen size={15} />
-        <span>{cwd.split(/[\\/]/).filter(Boolean).at(-1) || cwd}</span>
-      </div>
-      <div className={ui("breadcrumbs")}>
-        <button onClick={() => setPath("")}>root</button>
-        {segments.map((segment, index) => (
-          <span key={`${segment}-${index}`}>
-            <ChevronRight size={12} />
-            <button
-              onClick={() => setPath(segments.slice(0, index + 1).join("/"))}
-            >
-              {segment}
-            </button>
-          </span>
-        ))}
-      </div>
 
-      {error !== null && (
-        <ErrorBanner error={error} onDismiss={() => setError(null)} />
-      )}
-      {!list ? (
-        <Loading label={t("读取目录")} />
-      ) : (
-        <div className={ui("file-list")}>
-          {path && (
-            <button
-              className={ui("file-row")}
-              onClick={() =>
-                setPath(
-                  path
-                    .split(/[\\/]/)
-                    .filter(Boolean)
-                    .slice(0, -1)
-                    .join("/")
-                )
-              }
-            >
-              <Folder size={16} />
-              <span>..</span>
-            </button>
-          )}
-          {list.entries.map((entry) => (
-            <div className={ui("file-row-shell")} key={entry.path}>
-              <button
-                className={ui(`file-row ${
-                  selected?.entry.path === entry.path ? "selected" : ""
-                }`)}
-                onClick={() => void openEntry(entry)}
-              >
-                <FileIcon entry={entry} />
-                <span title={entry.name}>{entry.name}</span>
-                {!entry.directory && <small>{formatBytes(entry.size)}</small>}
-              </button>
-              <ActionMenu label={t("文件操作 {{name}}", { name: entry.name })}>
-                <ActionMenuItem onClick={() => void copyPath(entry)}>
-                  <Copy size={14} />
-                  {t("复制相对路径")}
-                </ActionMenuItem>
-                <ActionMenuItem
-                  onClick={() => setMutation({ type: "rename", entry })}
-                >
-                  <Pencil size={14} />
-                  {t("重命名")}
-                </ActionMenuItem>
-              </ActionMenu>
+      <div className={ui("file-inspector-layout")}>
+        <section className={ui("file-explorer-pane")} aria-label={t("文件")}>
+          <div className={ui("file-explorer-pathbar")}>
+            <div className={ui("file-root file-explorer-root")} title={cwd}>
+              <FolderOpen size={15} />
+              <span>{cwd.split(/[\\/]/).filter(Boolean).at(-1) || cwd}</span>
             </div>
-          ))}
-          {list.truncated && (
-            <div className={ui("file-limit")}>{t("目录过大，仅显示前 2000 项")}</div>
-          )}
-        </div>
-      )}
-      {selected && (
-        <FilePreview
-          sessionId={sessionId}
-          selected={selected}
-          onClose={() => setSelected(null)}
-        />
-      )}
+            <div className={ui("breadcrumbs file-explorer-breadcrumbs")}>
+              <button onClick={() => setPath("")}>root</button>
+              {segments.map((segment, index) => (
+                <span key={`${segment}-${index}`}>
+                  <ChevronRight size={12} />
+                  <button
+                    onClick={() =>
+                      setPath(segments.slice(0, index + 1).join("/"))
+                    }
+                  >
+                    {segment}
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className={ui("file-explorer-content")}>
+            {error !== null && (
+              <ErrorBanner error={error} onDismiss={() => setError(null)} />
+            )}
+            {!list ? (
+              <Loading label={t("读取目录")} />
+            ) : (
+              <div className={ui("file-list file-tree-list")}>
+                {path && (
+                  <button
+                    className={ui("file-row file-tree-row is-directory")}
+                    onClick={() =>
+                      setPath(
+                        path
+                          .split(/[\\/]/)
+                          .filter(Boolean)
+                          .slice(0, -1)
+                          .join("/")
+                      )
+                    }
+                  >
+                    <Folder size={16} />
+                    <span>..</span>
+                  </button>
+                )}
+                {list.entries.map((entry) => (
+                  <div
+                    className={ui("file-row-shell file-tree-item")}
+                    key={entry.path}
+                  >
+                    <button
+                      className={ui(
+                        `file-row file-tree-row ${
+                          entry.directory ? "is-directory" : "is-file"
+                        } ${
+                          selected?.entry.path === entry.path
+                            ? "selected is-selected"
+                            : ""
+                        }`
+                      )}
+                      onClick={() => void openEntry(entry)}
+                    >
+                      <FileIcon entry={entry} />
+                      <span title={entry.name}>{entry.name}</span>
+                      {!entry.directory && (
+                        <small>{formatBytes(entry.size)}</small>
+                      )}
+                    </button>
+                    <ActionMenu
+                      label={t("文件操作 {{name}}", { name: entry.name })}
+                    >
+                      <ActionMenuItem onClick={() => void copyPath(entry)}>
+                        <Copy size={14} />
+                        {t("复制相对路径")}
+                      </ActionMenuItem>
+                      <ActionMenuItem
+                        onClick={() => setMutation({ type: "rename", entry })}
+                      >
+                        <Pencil size={14} />
+                        {t("重命名")}
+                      </ActionMenuItem>
+                    </ActionMenu>
+                  </div>
+                ))}
+                {list.truncated && (
+                  <div className={ui("file-limit")}>
+                    {t("目录过大，仅显示前 2000 项")}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {selected && (
+          <FilePreview
+            sessionId={sessionId}
+            selected={selected}
+            onClose={() => setSelected(null)}
+          />
+        )}
+      </div>
       <FileMutationDialog
         sessionId={sessionId}
         mutation={mutation}

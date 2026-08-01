@@ -43,6 +43,7 @@ export class PiRpcWorker extends EventEmitter {
   #state: Record<string, unknown> | null = null;
   #stderr = "";
   #intentionalStop = false;
+  #closePromise: Promise<void> | null = null;
 
   constructor(options: PiRpcWorkerOptions) {
     super();
@@ -184,23 +185,17 @@ export class PiRpcWorker extends EventEmitter {
     return this.#state;
   }
 
-  async close(graceMs = 3000): Promise<void> {
+  close(graceMs = 3000): Promise<void> {
     const child = this.#process;
-    if (!child) return;
+    if (!child) return Promise.resolve();
+    if (this.#closePromise) return this.#closePromise;
     this.#intentionalStop = true;
-    child.kill("SIGTERM");
-    if (child.exitCode !== null) return;
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        if (child.exitCode === null) child.kill("SIGKILL");
-        resolve();
-      }, graceMs);
-      timer.unref();
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
+    const termination = waitForChildTermination(child, graceMs);
+    const tracked = termination.finally(() => {
+      if (this.#closePromise === tracked) this.#closePromise = null;
     });
+    this.#closePromise = tracked;
+    return tracked;
   }
 
   #handleValue(value: unknown): void {
@@ -263,6 +258,64 @@ export class PiRpcWorker extends EventEmitter {
       stderr: this.stderrTail
     });
   }
+}
+
+function waitForChildTermination(
+  child: ChildProcessWithoutNullStreams,
+  graceMs: number
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let timer: NodeJS.Timeout | null = null;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      child.off("exit", onExit);
+      child.off("error", onError);
+    };
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onExit = () => settle();
+    const onError = () => settle();
+    child.once("exit", onExit);
+    child.once("error", onError);
+    try {
+      child.kill("SIGTERM");
+    } catch (error) {
+      fail(error);
+      return;
+    }
+    if (child.exitCode !== null || child.signalCode !== null) {
+      settle();
+      return;
+    }
+    timer = setTimeout(() => {
+      timer = null;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        settle();
+        return;
+      }
+      try {
+        child.kill("SIGKILL");
+      } catch (error) {
+        fail(error);
+      }
+    }, Math.max(0, graceMs));
+    timer.unref();
+  });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

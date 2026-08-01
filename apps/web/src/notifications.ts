@@ -49,7 +49,7 @@ export async function requestBrowserNotificationPermission(): Promise<
   return await Notification.requestPermission();
 }
 
-export function notifySessionCompletion({
+export function notifySessionSettled({
   sessionId,
   displayName,
   failed = false
@@ -73,7 +73,7 @@ export function notifySessionCompletion({
     Notification.permission === "granted"
   ) {
     const notification = new Notification(
-      failed ? t("Pi 会话需要处理") : t("Pi 会话已完成"),
+      failed ? t("Pi 会话需要处理") : t("Pi 已等待指令"),
       {
         body: displayName,
         tag: `pi-web-session-${sessionId}`

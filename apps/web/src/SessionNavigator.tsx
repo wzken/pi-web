@@ -1,6 +1,4 @@
 import {
-  Bot,
-  CalendarClock,
   Check,
   ChevronDown,
   ChevronRight,
@@ -8,8 +6,8 @@ import {
   Folder,
   FolderInput,
   FolderPlus,
-  LayoutDashboard,
   MessageSquarePlus,
+  PanelLeftClose,
   Pencil,
   Settings,
   Trash2,
@@ -20,7 +18,6 @@ import {
   useMemo,
   useState,
   type Dispatch,
-  type ReactNode,
   type SetStateAction
 } from "react";
 import type {
@@ -68,6 +65,50 @@ export function useWorkbenchRail(): [
     }
   }, [open]);
 
+  useEffect(() => {
+    if (
+      !open ||
+      !window.matchMedia("(max-width: 760px)").matches
+    ) {
+      return;
+    }
+    const previous = document.activeElement as HTMLElement | null;
+    const rail = document.querySelector<HTMLElement>(
+      ".workbench-session-rail"
+    );
+    rail
+      ?.querySelector<HTMLElement>(".workbench-rail-close")
+      ?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !rail) return;
+      const focusable = Array.from(
+        rail.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex='-1'])"
+        )
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previous?.focus();
+    };
+  }, [open, setOpen]);
+
   return [open, setOpen];
 }
 
@@ -75,32 +116,61 @@ export function SessionNavigator({
   sessions,
   currentId,
   cwd,
-  explorer,
+  onClose,
   onSessionRenamed
 }: {
   sessions: SessionRecord[];
   currentId?: string | undefined;
   cwd?: string;
-  explorer?: ReactNode;
+  onClose?: () => void;
   onSessionRenamed?: (session: SessionRecord) => void;
 }) {
+  const workspaceSessions = useMemo(
+    () =>
+      cwd
+        ? sessions.filter((session) => sameWorkspace(session.cwd, cwd))
+        : sessions,
+    [cwd, sessions]
+  );
+  const workspaceHome = cwd ? `/?cwd=${encodeURIComponent(cwd)}` : "/";
+
   return (
     <aside className={ui("workbench-session-rail")}>
       <header className={ui("workbench-rail-brand")}>
-        <Link to="/" aria-label={t("Pi Agent Web 首页")}>
-          <Command size={17} />
-          <strong>Pi Agent Web</strong>
+        <Link to={workspaceHome} aria-label={t("Pi Agent Web 首页")}>
+          <Command size={16} />
+          <strong>{t("任务")}</strong>
         </Link>
-        <ButtonLink
-          to="/"
-          variant="toolbar"
-          size="sm"
-          tooltip={t("新会话")}
-          aria-label={t("新建会话")}
-        >
-          <MessageSquarePlus size={15} />
-          <span>{t("新建")}</span>
-        </ButtonLink>
+        <div className={ui("workbench-rail-actions")}>
+          <ButtonLink
+            to={workspaceHome}
+            variant="toolbar"
+            size="sm"
+            tooltip={t("新会话")}
+            aria-label={t("新建会话")}
+          >
+            <MessageSquarePlus size={15} />
+            <span>{t("新建")}</span>
+          </ButtonLink>
+          {onClose && (
+            <IconButton
+              className={ui("workbench-rail-close")}
+              label={t("关闭任务侧栏")}
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                onClose();
+                window.requestAnimationFrame(() =>
+                  document
+                    .querySelector<HTMLElement>(".workbench-rail-toggle")
+                    ?.focus({ preventScroll: true })
+                );
+              }}
+            >
+              <PanelLeftClose size={17} />
+            </IconButton>
+          )}
+        </div>
       </header>
 
       <div className={ui("workbench-rail-path")} title={cwd}>
@@ -108,40 +178,20 @@ export function SessionNavigator({
       </div>
 
       <SessionGroups
-        sessions={sessions}
+        sessions={workspaceSessions}
         currentId={currentId}
         onSessionRenamed={onSessionRenamed}
       />
 
-      <section className={ui("workbench-explorer")}>
-        {explorer ?? (
-          <>
-            <div className={ui("workbench-explorer-heading")}>
-              <span><ChevronDown size={13} /> EXPLORER</span>
-            </div>
-            <div className={ui("workbench-explorer-empty")}>
-              <Folder size={18} />
-              <span>{t("会话创建后显示工作区文件")}</span>
-            </div>
-          </>
-        )}
-      </section>
-
       <footer className={ui("workbench-rail-footer")}>
-        <ButtonLink to="/dashboard" variant="ghost" size="sm" tooltip={t("总览")}>
-          <LayoutDashboard size={15} />
-          <span>{t("总览")}</span>
-        </ButtonLink>
-        <ButtonLink to="/schedules" variant="ghost" size="sm" tooltip={t("调度")}>
-          <CalendarClock size={15} />
-          <span>{t("调度")}</span>
-        </ButtonLink>
-        <ButtonLink to="/pi" variant="ghost" size="sm" tooltip={t("Pi 管理")}>
-          <Bot size={15} />
-          <span>Pi</span>
-        </ButtonLink>
-        <ButtonLink to="/settings" variant="ghost" size="sm" tooltip={t("设置")}>
-          <Settings size={15} />
+        <ButtonLink
+          to="/settings"
+          variant="ghost"
+          size="sm"
+          aria-label={t("设置")}
+          title={t("设置")}
+        >
+          <Settings size={16} />
           <span>{t("设置")}</span>
         </ButtonLink>
       </footer>
@@ -400,6 +450,9 @@ function SessionGroups({
                   type="button"
                   onClick={() => toggleFolder(folder.id)}
                   aria-expanded={!isCollapsed}
+                  aria-label={`${folder.name} ${t("{{count}} 个会话", {
+                    count: items.length
+                  })}`}
                 >
                   {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                   <Folder size={13} />
@@ -450,7 +503,7 @@ function SessionGroups({
                 <small>{grouped.unfiled.length}</small>
               </div>
             )}
-            {grouped.unfiled.slice(0, 24).map((session) => (
+            {grouped.unfiled.map((session) => (
               <SessionRow
                 key={session.id}
                 session={session}
@@ -475,86 +528,80 @@ function SessionGroups({
         {t("查看全部会话")}
       </Link>
 
-      {renaming && (
-        <div
-          className={ui("dialog-backdrop")}
-          onPointerDown={() => {
-            if (!renameBusy) setRenaming(null);
+      <Dialog
+        open={renaming !== null}
+        labelledBy="rename-session-title"
+        className={ui("session-rename-dialog")}
+        maxWidth={420}
+        onClose={() => {
+          if (!renameBusy) setRenaming(null);
+        }}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void renameSession();
           }}
         >
-          <form
-            className={ui("dialog session-rename-dialog")}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="rename-session-title"
-            onPointerDown={(event) => event.stopPropagation()}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void renameSession();
-            }}
-          >
-            <header className={ui("dialog-heading")}>
-              <div>
-                <p className={ui("eyebrow")}>SESSION</p>
-                <h2 id="rename-session-title">{t("重命名会话")}</h2>
-              </div>
-              <IconButton
-                label={t("关闭重命名对话框")}
-                size="sm"
-                disabled={renameBusy}
-                onClick={() => setRenaming(null)}
-              >
-                <X size={16} />
-              </IconButton>
-            </header>
-            <label className={ui("field")}>
-              <span>{t("会话名称")}</span>
-              <input
-                autoFocus
-                value={renameValue}
-                maxLength={160}
-                aria-describedby={renameError ? "rename-session-error" : undefined}
-                onChange={(event) => setRenameValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape" && !renameBusy) setRenaming(null);
-                }}
-              />
-            </label>
-            {renameError && (
-              <p
-                className={ui("session-folder-error")}
-                id="rename-session-error"
-                role="alert"
-              >
-                {renameError}
-              </p>
-            )}
-            <div className={ui("dialog-actions")}>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={renameBusy}
-                onClick={() => setRenaming(null)}
-              >
-                {t("取消")}
-              </Button>
-              <Button
-                type="submit"
-                loading={renameBusy}
-                loadingLabel={t("保存中…")}
-                disabled={!renameValue.trim()}
-              >
-                {t("保存名称")}
-              </Button>
+          <header className={ui("dialog-heading")}>
+            <div>
+              <p className={ui("eyebrow")}>SESSION</p>
+              <h2 id="rename-session-title">{t("重命名会话")}</h2>
             </div>
-          </form>
-        </div>
-      )}
+            <IconButton
+              label={t("关闭重命名对话框")}
+              size="sm"
+              disabled={renameBusy}
+              onClick={() => setRenaming(null)}
+            >
+              <X size={16} />
+            </IconButton>
+          </header>
+          <label className={ui("field")}>
+            <span>{t("会话名称")}</span>
+            <input
+              autoFocus
+              value={renameValue}
+              maxLength={160}
+              aria-describedby={renameError ? "rename-session-error" : undefined}
+              onChange={(event) => setRenameValue(event.target.value)}
+            />
+          </label>
+          {renameError && (
+            <p
+              className={ui("session-folder-error")}
+              id="rename-session-error"
+              role="alert"
+            >
+              {renameError}
+            </p>
+          )}
+          <div className={ui("dialog-actions")}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={renameBusy}
+              onClick={() => setRenaming(null)}
+            >
+              {t("取消")}
+            </Button>
+            <Button
+              type="submit"
+              loading={renameBusy}
+              loadingLabel={t("保存中…")}
+              disabled={!renameValue.trim()}
+            >
+              {t("保存名称")}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
 
       <Dialog
         open={renamingFolder !== null}
         labelledBy="rename-folder-title"
         className={ui("session-rename-dialog")}
+        maxWidth={420}
         onClose={() => {
           if (!renameBusy) setRenamingFolder(null);
         }}
@@ -637,7 +684,7 @@ function SessionRow({
     >
       <Link
         to={`/sessions/${session.id}`}
-        aria-label={`${session.displayName}${unread ? t("，有未读完成通知") : ""}`}
+        aria-label={`${session.displayName}${unread ? t("，有未读通知") : ""}`}
       >
         <span>{session.displayName}</span>
         <small>{formatRelativeTime(session.updatedAt)}</small>
@@ -691,4 +738,14 @@ function compactPath(path: string): string {
   const segments = path.split(/[\\/]/).filter(Boolean);
   if (segments.length <= 2) return path;
   return `…/${segments.slice(-2).join("/")}`;
+}
+
+function sameWorkspace(left: string, right: string): boolean {
+  const normalize = (value: string) => {
+    const normalized = value.replaceAll("\\", "/").replace(/\/+$/, "");
+    return /^[a-z]:\//i.test(normalized)
+      ? normalized.toLocaleLowerCase()
+      : normalized;
+  };
+  return normalize(left) === normalize(right);
 }

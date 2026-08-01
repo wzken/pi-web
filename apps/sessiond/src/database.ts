@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
+  AuthRotateInput,
   DashboardSummary,
   JobInput,
   ScheduledJob,
@@ -64,7 +65,44 @@ const MIGRATION_2 = `
 ALTER TABLE sessions ADD COLUMN system_prompt TEXT;
 `;
 
+const MIGRATION_3 = `
+ALTER TABLE sessions ADD COLUMN create_mutation_id TEXT;
+CREATE UNIQUE INDEX sessions_create_mutation_idx
+ON sessions(create_mutation_id)
+WHERE create_mutation_id IS NOT NULL;
+`;
+
+const MIGRATION_4 = `
+ALTER TABLE sessions ADD COLUMN create_mutation_fingerprint TEXT;
+`;
+
+const MIGRATION_5 = `
+ALTER TABLE sessions ADD COLUMN create_mutation_completed INTEGER NOT NULL DEFAULT 1;
+`;
+
 type Row = Record<string, unknown>;
+
+function monotonicNullable(
+  previous: number | null,
+  incoming: number | null
+): number | null {
+  if (previous === null) return incoming;
+  if (incoming === null) return previous;
+  return Math.max(previous, incoming);
+}
+
+interface CreateSessionRowInput {
+  cwd: string;
+  displayName: string;
+  model?: string | null;
+  thinkingLevel?: ThinkingLevel | null;
+  systemPrompt?: string | null;
+  piSessionReference?: string | null;
+  createdBy: "web" | "cron" | "model";
+  scheduleRunId?: string | null;
+  mutationId?: string;
+  mutationFingerprint?: string;
+}
 
 export class SessionDatabase {
   readonly db: DatabaseSync;
@@ -99,6 +137,39 @@ export class SessionDatabase {
         this.db
           .prepare(
             "INSERT INTO schema_migrations(version, applied_at) VALUES (2, ?)"
+          )
+          .run(nowIso());
+      }
+      const migration3 = this.db
+        .prepare("SELECT version FROM schema_migrations WHERE version = 3")
+        .get();
+      if (!migration3) {
+        this.db.exec(MIGRATION_3);
+        this.db
+          .prepare(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (3, ?)"
+          )
+          .run(nowIso());
+      }
+      const migration4 = this.db
+        .prepare("SELECT version FROM schema_migrations WHERE version = 4")
+        .get();
+      if (!migration4) {
+        this.db.exec(MIGRATION_4);
+        this.db
+          .prepare(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (4, ?)"
+          )
+          .run(nowIso());
+      }
+      const migration5 = this.db
+        .prepare("SELECT version FROM schema_migrations WHERE version = 5")
+        .get();
+      if (!migration5) {
+        this.db.exec(MIGRATION_5);
+        this.db
+          .prepare(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (5, ?)"
           )
           .run(nowIso());
       }
@@ -159,25 +230,45 @@ export class SessionDatabase {
     this.db.prepare("DELETE FROM settings WHERE key = ?").run(key);
   }
 
-  createSession(input: {
-    cwd: string;
-    displayName: string;
-    model?: string | null;
-    thinkingLevel?: ThinkingLevel | null;
-    systemPrompt?: string | null;
-    piSessionReference?: string | null;
-    createdBy: "web" | "cron" | "model";
-    scheduleRunId?: string | null;
-  }): SessionRecord {
+  rotateAccessKey(input: AuthRotateInput): void {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.setSetting("access_key_hash", input.hash);
+      this.deleteSetting("auth_sessions");
+      this.audit(input.auditType, "success", input.actor);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  createSession(input: CreateSessionRowInput): SessionRecord {
+    return this.createOrReuseSession(input).session;
+  }
+
+  createOrReuseSession(input: CreateSessionRowInput): {
+    session: SessionRecord;
+    created: boolean;
+    mutationCompleted: boolean;
+  } {
+    if (input.mutationId && !input.mutationFingerprint) {
+      throw new PiWebError(
+        "MUTATION_FINGERPRINT_REQUIRED",
+        "Create mutation fingerprint is required",
+        500
+      );
+    }
     const id = randomUUID();
     const now = nowIso();
-    this.db
+    const result = this.db
       .prepare(
-        `INSERT INTO sessions(
+        `INSERT OR IGNORE INTO sessions(
            id, pi_session_reference, cwd, display_name, status, model, thinking_level, system_prompt,
            started_at, last_event_sequence, input_tokens, output_tokens, cached_tokens,
-           cost_status, tool_calls, created_by, schedule_run_id, updated_at
-         ) VALUES (?, ?, ?, ?, 'starting', ?, ?, ?, ?, 0, 0, 0, 0, 'unknown', 0, ?, ?, ?)`
+           cost_status, tool_calls, created_by, schedule_run_id, create_mutation_id,
+           create_mutation_fingerprint, create_mutation_completed, updated_at
+         ) VALUES (?, ?, ?, ?, 'starting', ?, ?, ?, ?, 0, 0, 0, 0, 'unknown', 0, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -190,11 +281,76 @@ export class SessionDatabase {
         now,
         input.createdBy,
         input.scheduleRunId ?? null,
+        input.mutationId ?? null,
+        input.mutationFingerprint ?? null,
+        input.mutationId ? 0 : 1,
         now
       );
+    if (result.changes === 0 && input.mutationId) {
+      const existing = this.findCreateMutation(input.mutationId);
+      if (existing) {
+        assertMutationFingerprint(
+          existing.fingerprint,
+          input.mutationFingerprint
+        );
+        return {
+          session: existing.session,
+          created: false,
+          mutationCompleted: existing.completed
+        };
+      }
+    }
+    if (result.changes === 0) {
+      throw new PiWebError(
+        "SESSION_CREATE_FAILED",
+        "Session could not be created",
+        500
+      );
+    }
     this.touchDirectory(input.cwd);
     this.audit("session.create", "success", input.createdBy, id, { cwd: input.cwd });
-    return this.getSession(id);
+    return {
+      session: this.getSession(id),
+      created: true,
+      mutationCompleted: !input.mutationId
+    };
+  }
+
+  findCreateMutation(mutationId: string): {
+    session: SessionRecord;
+    fingerprint: string | null;
+    completed: boolean;
+  } | null {
+    const row = this.db
+      .prepare("SELECT * FROM sessions WHERE create_mutation_id = ?")
+      .get(mutationId) as Row | undefined;
+    return row
+      ? {
+          session: mapSession(row),
+          fingerprint:
+            typeof row.create_mutation_fingerprint === "string"
+              ? row.create_mutation_fingerprint
+              : null,
+          completed: Number(row.create_mutation_completed) === 1
+        }
+      : null;
+  }
+
+  completeCreateMutation(id: string, mutationId: string): void {
+    const result = this.db
+      .prepare(
+        `UPDATE sessions
+         SET create_mutation_completed = 1, updated_at = ?
+         WHERE id = ? AND create_mutation_id = ?`
+      )
+      .run(nowIso(), id, mutationId);
+    if (result.changes === 0) {
+      throw new PiWebError(
+        "CREATE_MUTATION_NOT_FOUND",
+        "Create mutation could not be completed",
+        500
+      );
+    }
   }
 
   getSession(id: string): SessionRecord {
@@ -293,32 +449,60 @@ export class SessionDatabase {
   }
 
   updateUsage(id: string, usage: UsageSummary): SessionRecord {
-    const previous = this.getSession(id);
-    const updated = this.updateSession(id, usage);
-    const day = new Date().toISOString().slice(0, 10);
-    this.db
-      .prepare(
-        `INSERT INTO usage_daily(
-           day, input_tokens, output_tokens, cached_tokens, reported_cost, estimated_cost, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(day) DO UPDATE SET
-           input_tokens = input_tokens + excluded.input_tokens,
-           output_tokens = output_tokens + excluded.output_tokens,
-           cached_tokens = cached_tokens + excluded.cached_tokens,
-           reported_cost = reported_cost + excluded.reported_cost,
-           estimated_cost = estimated_cost + excluded.estimated_cost,
-           updated_at = excluded.updated_at`
-      )
-      .run(
-        day,
-        Math.max(0, usage.inputTokens - previous.inputTokens),
-        Math.max(0, usage.outputTokens - previous.outputTokens),
-        Math.max(0, usage.cachedTokens - previous.cachedTokens),
-        Math.max(0, (usage.reportedCost ?? 0) - (previous.reportedCost ?? 0)),
-        Math.max(0, (usage.estimatedCost ?? 0) - (previous.estimatedCost ?? 0)),
-        nowIso()
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const previous = this.getSession(id);
+      const reportedCost = monotonicNullable(
+        previous.reportedCost,
+        usage.reportedCost
       );
-    return updated;
+      const estimatedCost = monotonicNullable(
+        previous.estimatedCost,
+        usage.estimatedCost
+      );
+      const updated = this.updateSession(id, {
+        inputTokens: Math.max(previous.inputTokens, usage.inputTokens),
+        outputTokens: Math.max(previous.outputTokens, usage.outputTokens),
+        cachedTokens: Math.max(previous.cachedTokens, usage.cachedTokens),
+        reportedCost,
+        estimatedCost,
+        costStatus:
+          reportedCost !== null
+            ? "reported"
+            : estimatedCost !== null
+              ? "estimated"
+              : "unknown",
+        toolCalls: Math.max(previous.toolCalls, usage.toolCalls)
+      });
+      const day = new Date().toISOString().slice(0, 10);
+      this.db
+        .prepare(
+          `INSERT INTO usage_daily(
+             day, input_tokens, output_tokens, cached_tokens, reported_cost, estimated_cost, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(day) DO UPDATE SET
+             input_tokens = input_tokens + excluded.input_tokens,
+             output_tokens = output_tokens + excluded.output_tokens,
+             cached_tokens = cached_tokens + excluded.cached_tokens,
+             reported_cost = reported_cost + excluded.reported_cost,
+             estimated_cost = estimated_cost + excluded.estimated_cost,
+             updated_at = excluded.updated_at`
+        )
+        .run(
+          day,
+          updated.inputTokens - previous.inputTokens,
+          updated.outputTokens - previous.outputTokens,
+          updated.cachedTokens - previous.cachedTokens,
+          (updated.reportedCost ?? 0) - (previous.reportedCost ?? 0),
+          (updated.estimatedCost ?? 0) - (previous.estimatedCost ?? 0),
+          nowIso()
+        );
+      this.db.exec("COMMIT");
+      return updated;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   createJob(
@@ -691,6 +875,18 @@ export class SessionDatabase {
         nowIso()
       );
   }
+}
+
+function assertMutationFingerprint(
+  existing: string | null,
+  incoming: string | undefined
+): void {
+  if (existing !== null && existing === incoming) return;
+  throw new PiWebError(
+    "MUTATION_ID_REUSED",
+    "Mutation ID was already used for a different payload",
+    409
+  );
 }
 
 function mapSession(row: Row): SessionRecord {

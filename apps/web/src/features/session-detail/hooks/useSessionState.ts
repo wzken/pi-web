@@ -5,7 +5,12 @@ import {
   useReducer,
   useRef
 } from "react";
-import { api, isAbortError } from "../../../api";
+import { ApiError, api, isAbortError } from "../../../api";
+import {
+  classifySequence,
+  resolveAfterSequence,
+  type SequenceDisposition
+} from "../../../session-realtime";
 import type {
   SessionDetailAction,
   SessionDetailState
@@ -15,6 +20,9 @@ import {
   mergeActivityEvent,
   snapshotToolEvents
 } from "../utils/session-events";
+import { shouldApplyHistoryResponse } from "../utils/session-history";
+
+export const initialSessionFirstItemIndex = 1_000_000;
 
 function createInitialState(): SessionDetailState {
   return {
@@ -25,8 +33,8 @@ function createInitialState(): SessionDetailState {
     connectionState: "connecting",
     replayBusy: false,
     controlBusy: null,
-    clock: Date.now(),
-    queuedMessages: { steering: [], followUp: [] }
+    firstItemIndex: initialSessionFirstItemIndex,
+    clock: Date.now()
   };
 }
 
@@ -37,25 +45,15 @@ export function sessionDetailReducer(
   switch (action.type) {
     case "reset":
       return createInitialState();
-    case "snapshot.refreshed":
-      return {
-        ...state,
-        snapshot: action.snapshot,
-        activities: snapshotToolEvents(action.snapshot)
-          .reduce(mergeActivityEvent, state.activities)
-          .slice(-50),
-        liveText: "",
-        queuedMessages: action.snapshot.queuedMessages
-      };
-    case "snapshot.synced":
+    case "projection.replaced":
       return {
         ...state,
         snapshot: action.snapshot,
         activities: snapshotToolEvents(action.snapshot)
           .reduce(mergeActivityEvent, [])
           .slice(-50),
-        liveText: "",
-        queuedMessages: action.snapshot.queuedMessages
+        liveText: action.snapshot.liveText,
+        firstItemIndex: initialSessionFirstItemIndex
       };
     case "history.loaded":
       if (state.snapshot?.session.id !== action.sessionId) return state;
@@ -67,12 +65,13 @@ export function sessionDetailReducer(
             ...action.snapshot.messages,
             ...state.snapshot.messages
           ],
-          entries: [...action.snapshot.entries, ...state.snapshot.entries],
           truncated: action.snapshot.truncated,
           nextCursor: action.snapshot.nextCursor
-        }
+        },
+        firstItemIndex:
+          state.firstItemIndex - action.snapshot.messages.length
       };
-    case "realtime.event":
+    case "projection.event":
       return applyRealtimeEvent(state, action.event);
     case "session.updated":
       if (state.snapshot?.session.id !== action.session.id) return state;
@@ -80,17 +79,6 @@ export function sessionDetailReducer(
         ...state,
         snapshot: { ...state.snapshot, session: action.session }
       };
-    case "session.status":
-      if (!state.snapshot) return state;
-      return {
-        ...state,
-        snapshot: {
-          ...state.snapshot,
-          session: { ...state.snapshot.session, status: action.status }
-        }
-      };
-    case "liveText.clear":
-      return { ...state, liveText: "" };
     case "error.set":
       return { ...state, error: action.error };
     case "connection.set":
@@ -114,12 +102,22 @@ export function useSessionState(sessionId: string) {
   );
   const activeSessionId = useRef(sessionId);
   const latestSequence = useRef(0);
+  const projectionGeneration = useRef(0);
+  const historyGeneration = useRef(0);
   const refreshTimer = useRef<number | null>(null);
   const snapshotController = useRef<AbortController | null>(null);
+  const historyController = useRef<AbortController | null>(null);
   activeSessionId.current = sessionId;
+
+  const invalidateHistoryRequests = useCallback(() => {
+    historyGeneration.current += 1;
+    historyController.current?.abort();
+    historyController.current = null;
+  }, []);
 
   const refresh = useCallback(async () => {
     const requestedId = sessionId;
+    const requestedGeneration = projectionGeneration.current;
     snapshotController.current?.abort();
     const controller = new AbortController();
     snapshotController.current = controller;
@@ -139,18 +137,23 @@ export function useSessionState(sessionId: string) {
     }
     if (
       activeSessionId.current !== requestedId ||
+      projectionGeneration.current !== requestedGeneration ||
       next.session.id !== requestedId ||
       next.sequence < latestSequence.current
     ) {
       return false;
     }
     latestSequence.current = next.sequence;
+    invalidateHistoryRequests();
     sessionStorage.setItem(`pi-web-seq:${requestedId}`, String(next.sequence));
-    dispatch({ type: "snapshot.refreshed", snapshot: next });
+    dispatch({
+      type: "projection.replaced",
+      snapshot: next
+    });
     return true;
-  }, [sessionId]);
+  }, [invalidateHistoryRequests, sessionId]);
 
-  const scheduleRefresh = useCallback(() => {
+  const requestSnapshotReconciliation = useCallback(() => {
     if (refreshTimer.current !== null) {
       window.clearTimeout(refreshTimer.current);
     }
@@ -160,24 +163,138 @@ export function useSessionState(sessionId: string) {
     }, 120);
   }, [refresh]);
 
+  const acceptSynchronizedSnapshot = useCallback(
+    (snapshot: SessionSnapshot): boolean => {
+      if (
+        activeSessionId.current !== sessionId ||
+        snapshot.session.id !== sessionId ||
+        snapshot.sequence < latestSequence.current
+      ) {
+        return false;
+      }
+      latestSequence.current = snapshot.sequence;
+      invalidateHistoryRequests();
+      sessionStorage.setItem(
+        `pi-web-seq:${sessionId}`,
+        String(snapshot.sequence)
+      );
+      dispatch({
+        type: "projection.replaced",
+        snapshot
+      });
+      return true;
+    },
+    [invalidateHistoryRequests, sessionId]
+  );
+
+  const acceptRealtimeEvent = useCallback(
+    (
+      event: import("@pi-web/protocol").RealtimeEvent
+    ): SequenceDisposition => {
+      if (
+        activeSessionId.current !== sessionId ||
+        event.sessionId !== sessionId
+      ) {
+        return "stale";
+      }
+      const disposition = classifySequence(
+        latestSequence.current,
+        event.sequence
+      );
+      if (disposition !== "next") {
+        return disposition;
+      }
+      latestSequence.current = event.sequence;
+      sessionStorage.setItem(
+        `pi-web-seq:${sessionId}`,
+        String(event.sequence)
+      );
+      dispatch({ type: "projection.event", event });
+      return "next";
+    },
+    [sessionId]
+  );
+
+  const getResumeSequence = useCallback(
+    () =>
+      resolveAfterSequence(
+        sessionStorage.getItem(`pi-web-seq:${sessionId}`),
+        latestSequence.current
+      ),
+    [sessionId]
+  );
+
+  const resetProjection = useCallback(() => {
+    projectionGeneration.current += 1;
+    invalidateHistoryRequests();
+    latestSequence.current = 0;
+    sessionStorage.removeItem(`pi-web-seq:${sessionId}`);
+    snapshotController.current?.abort();
+    snapshotController.current = null;
+    if (refreshTimer.current !== null) {
+      window.clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
+    }
+    dispatch({ type: "reset" });
+  }, [invalidateHistoryRequests, sessionId]);
+
   const loadEarlier = useCallback(async () => {
     const snapshot = state.snapshot;
     if (!snapshot?.nextCursor) return;
+    const requestedId = sessionId;
+    const requestedGeneration = historyGeneration.current;
+    historyController.current?.abort();
+    const controller = new AbortController();
+    historyController.current = controller;
     try {
       const older = await api<SessionSnapshot>(
-        `/api/sessions/${sessionId}?cursor=${encodeURIComponent(snapshot.nextCursor)}`
+        `/api/sessions/${requestedId}?cursor=${encodeURIComponent(snapshot.nextCursor)}`,
+        { signal: controller.signal }
       );
+      if (!shouldApplyHistoryResponse({
+        requestedSessionId: requestedId,
+        activeSessionId: activeSessionId.current,
+        responseSessionId: older.session.id,
+        requestedGeneration,
+        currentGeneration: historyGeneration.current,
+        aborted: controller.signal.aborted
+      })) {
+        return;
+      }
       dispatch({
         type: "history.loaded",
         snapshot: older,
-        sessionId
+        sessionId: requestedId
       });
     } catch (error) {
-      if (activeSessionId.current === sessionId) {
+      if (
+        error instanceof ApiError &&
+        error.code === "PI_SESSION_CURSOR_STALE" &&
+        activeSessionId.current === requestedId &&
+        historyGeneration.current === requestedGeneration
+      ) {
+        try {
+          await refresh();
+        } catch (refreshError) {
+          if (!isAbortError(refreshError)) {
+            dispatch({ type: "error.set", error: refreshError });
+          }
+        }
+        return;
+      }
+      if (
+        !isAbortError(error) &&
+        activeSessionId.current === requestedId &&
+        historyGeneration.current === requestedGeneration
+      ) {
         dispatch({ type: "error.set", error });
       }
+    } finally {
+      if (historyController.current === controller) {
+        historyController.current = null;
+      }
     }
-  }, [sessionId, state.snapshot]);
+  }, [refresh, sessionId, state.snapshot]);
 
   useEffect(() => {
     latestSequence.current = 0;
@@ -189,12 +306,13 @@ export function useSessionState(sessionId: string) {
     void refresh().catch((error) => dispatch({ type: "error.set", error }));
     return () => {
       snapshotController.current?.abort();
+      invalidateHistoryRequests();
       if (refreshTimer.current !== null) {
         window.clearTimeout(refreshTimer.current);
         refreshTimer.current = null;
       }
     };
-  }, [refresh]);
+  }, [invalidateHistoryRequests, refresh]);
 
   const sessionStatus = state.snapshot?.session.status;
   useEffect(() => {
@@ -215,9 +333,11 @@ export function useSessionState(sessionId: string) {
     state,
     dispatch,
     refresh,
-    scheduleRefresh,
-    loadEarlier,
-    activeSessionId,
-    latestSequence
+    requestSnapshotReconciliation,
+    acceptSynchronizedSnapshot,
+    acceptRealtimeEvent,
+    getResumeSequence,
+    resetProjection,
+    loadEarlier
   };
 }

@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createConnection } from "node:net";
 import { ensureDirectories, loadConfig, resolvePaths, saveConfig } from "@pi-web/config";
-import { SessiondClient } from "@pi-web/server";
 import { PiManager, SessionDatabase } from "@pi-web/sessiond";
+import type { SessiondDoctorResult } from "@pi-web/protocol";
 import {
   generateAccessKey,
   hashAccessKey,
@@ -22,6 +22,12 @@ import {
   validateAccessKeyInput
 } from "./access-key-input.js";
 import { prepareInstalledAccessKey } from "./install-access-key.js";
+import {
+  canConnectSessiond,
+  doctorWithAuthority,
+  rotateAccessKeyWithAuthority,
+  withOfflineSessiondLease
+} from "./sessiond-authority.js";
 
 const execFileAsync = promisify(execFile);
 const VERSION = "0.1.0";
@@ -117,16 +123,18 @@ async function install(): Promise<void> {
   } catch {
     await saveConfig(config, paths);
   }
-  const db = new SessionDatabase(paths.databaseFile);
-  let generatedKey: string | null;
-  try {
-    ({ generatedKey } = await prepareInstalledAccessKey(
-      db,
-      process.env.PI_WEB_ACCESS_KEY
-    ));
-  } finally {
-    db.close();
-  }
+  let generatedKey: string | null = null;
+  await withOfflineSessiondLease(paths, async () => {
+    const db = new SessionDatabase(paths.databaseFile);
+    try {
+      ({ generatedKey } = await prepareInstalledAccessKey(
+        db,
+        process.env.PI_WEB_ACCESS_KEY
+      ));
+    } finally {
+      db.close();
+    }
+  });
 
   const unitDir = join(homedir(), ".config", "systemd", "user");
   await mkdir(unitDir, { recursive: true, mode: 0o700 });
@@ -235,11 +243,35 @@ async function doctor(): Promise<void> {
       .catch((error) => checks.push([name, "FAIL", safeErrorMessage(error)]));
   }
 
-  let db: SessionDatabase | null = null;
-  try {
-    db = new SessionDatabase(paths.databaseFile);
-    checks.push(["SQLite", "PASS", paths.databaseFile]);
-    const probe = await new PiManager(config, db).doctorProbe();
+  const authority = await doctorWithAuthority(paths, async () =>
+    await probeDoctorOffline(paths.databaseFile, paths.socketPath, config)
+  ).catch((error) => {
+    checks.push([
+      "Session daemon socket",
+      "FAIL",
+      safeErrorMessage(error)
+    ]);
+    checks.push([
+      "SQLite / Pi probe",
+      "FAIL",
+      "Sessiond owns or may be starting; refusing a local database or PiManager fallback"
+    ]);
+    return null;
+  });
+  if (authority) {
+    checks.push([
+      "Session daemon socket",
+      authority.source === "sessiond" ? "PASS" : "FAIL",
+      paths.socketPath
+    ]);
+    checks.push([
+      "SQLite",
+      authority.result.database ? "PASS" : "FAIL",
+      authority.result.database
+        ? paths.databaseFile
+        : authority.result.pi.errors[0] ?? paths.databaseFile
+    ]);
+    const probe = authority.result.pi;
     checks.push([
       "Pi",
       probe.available ? "PASS" : "FAIL",
@@ -255,10 +287,13 @@ async function doctor(): Promise<void> {
       probe.packageCommands ? "PASS" : "FAIL",
       probe.packageCommands ? "pi list succeeded" : probe.errors.join("; ")
     ]);
-  } catch (error) {
-    checks.push(["SQLite / Pi probe", "FAIL", safeErrorMessage(error)]);
-  } finally {
-    db?.close();
+    if (authority.source === "sessiond") {
+      checks.push([
+        "Cron scheduler",
+        authority.result.scheduler ? "PASS" : "FAIL",
+        `${authority.result.activeWorkers} active workers`
+      ]);
+    }
   }
 
   const piConfigDir =
@@ -266,32 +301,6 @@ async function doctor(): Promise<void> {
   await access(piConfigDir, constants.R_OK)
     .then(() => checks.push(["Pi config readable", "PASS", piConfigDir]))
     .catch(() => checks.push(["Pi config readable", "WARN", `${piConfigDir} not found or unreadable`]));
-
-  const socketReady = await canConnect(paths.socketPath).catch(() => false);
-  checks.push([
-    "Session daemon socket",
-    socketReady ? "PASS" : "FAIL",
-    paths.socketPath
-  ]);
-  if (socketReady) {
-    const client = new SessiondClient(paths.socketPath, paths.ipcTokenFile);
-    try {
-      await client.start();
-      const result = await client.request<{
-        scheduler?: boolean;
-        activeWorkers?: number;
-      }>("doctor", undefined, 30_000);
-      checks.push([
-        "Cron scheduler",
-        result.scheduler ? "PASS" : "FAIL",
-        `${result.activeWorkers ?? 0} active workers`
-      ]);
-    } catch (error) {
-      checks.push(["Cron scheduler", "FAIL", safeErrorMessage(error)]);
-    } finally {
-      client.stop();
-    }
-  }
 
   const diagnosticHost =
     config.host === "::1"
@@ -405,13 +414,51 @@ async function persistAccessKey(
   const paths = resolvePaths();
   await ensureDirectories(paths);
   const hash = await hashAccessKey(key);
-  const db = new SessionDatabase(paths.databaseFile);
+  await rotateAccessKeyWithAuthority(
+    paths,
+    { hash, auditType, actor: "cli" },
+    () => {
+      const db = new SessionDatabase(paths.databaseFile);
+      try {
+        db.rotateAccessKey({ hash, auditType, actor: "cli" });
+      } finally {
+        db.close();
+      }
+    }
+  );
+}
+
+async function probeDoctorOffline(
+  databaseFile: string,
+  socketPath: string,
+  config: Awaited<ReturnType<typeof loadConfig>>
+): Promise<SessiondDoctorResult> {
+  let db: SessionDatabase | null = null;
   try {
-    db.setSetting("access_key_hash", hash);
-    db.deleteSetting("auth_sessions");
-    db.audit(auditType, "success", "cli");
+    db = new SessionDatabase(databaseFile);
+    return {
+      database: true,
+      socket: socketPath,
+      scheduler: false,
+      activeWorkers: 0,
+      pi: await new PiManager(config, db).doctorProbe()
+    };
+  } catch (error) {
+    return {
+      database: false,
+      socket: socketPath,
+      scheduler: false,
+      activeWorkers: 0,
+      pi: {
+        available: false,
+        version: null,
+        rpcStartable: false,
+        packageCommands: false,
+        errors: [safeErrorMessage(error)]
+      }
+    };
   } finally {
-    db.close();
+    db?.close();
   }
 }
 
@@ -474,23 +521,10 @@ function installSignalHandlers(close: () => Promise<void>): void {
 async function waitForSocket(path: string, timeoutMs: number): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await canConnect(path)) return;
+    if (await canConnectSessiond(path)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("Session daemon did not become ready");
-}
-
-async function canConnect(path: string): Promise<boolean> {
-  return await new Promise<boolean>((resolve) => {
-    const socket = createConnection(path);
-    const done = (value: boolean) => {
-      socket.destroy();
-      resolve(value);
-    };
-    socket.setTimeout(700, () => done(false));
-    socket.once("connect", () => done(true));
-    socket.once("error", () => done(false));
-  });
 }
 
 async function canConnectTcp(host: string, port: number): Promise<boolean> {

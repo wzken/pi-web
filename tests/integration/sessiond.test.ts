@@ -11,7 +11,10 @@ import type {
   SessionRecord,
   SessionSnapshot
 } from "@pi-web/protocol";
+import { SessionDatabase } from "../../apps/sessiond/src/database.js";
 import { runSessiond } from "../../apps/sessiond/src/main.js";
+import { fingerprintMutationPayload } from "../../apps/sessiond/src/mutation-fingerprint.js";
+import { acquireSessiondOwnerLease } from "../../apps/sessiond/src/owner-lease.js";
 import { runServer } from "../../apps/server/src/main.js";
 import { SessiondClient } from "../../apps/server/src/sessiond-client.js";
 import { resolvePaths } from "@pi-web/config";
@@ -40,6 +43,7 @@ describe.sequential("session daemon integration", () => {
     process.env.PI_WEB_FAKE_PI = fileURLToPath(
       new URL("../fixtures/fake-pi.mjs", import.meta.url)
     );
+    process.env.PI_WEB_FAKE_SESSION_DIR = join(root, "pi-sessions");
     const runtime = await runSessiond();
     closeRuntime = runtime.close;
     const paths = resolvePaths();
@@ -81,11 +85,46 @@ describe.sequential("session daemon integration", () => {
     ).toBe(true);
     expect(
       (
-        (snapshot.state?.sessionStats as Record<string, unknown>)
-          .contextUsage as Record<string, unknown>
+        snapshot.sessionStats?.contextUsage as Record<string, unknown>
       ).contextWindow
     ).toBe(200_000);
     await secondClient.request("sessions.close", { id: session.id });
+    secondClient.stop();
+  });
+
+  it("returns a snapshot when persisted sequence history outlives the replay ring", async () => {
+    const { root, client: firstClient } = await startRuntime();
+    const paths = resolvePaths();
+    const session = await firstClient.request<SessionRecord>("sessions.create", {
+      cwd: root,
+      displayName: "restart replay boundary",
+      prompt: "persist before restart"
+    });
+    await waitFor(
+      async () =>
+        (
+          await firstClient.request<SessionRecord>("sessions.get", {
+            id: session.id
+          })
+        ).status === "waiting"
+    );
+    firstClient.stop();
+    await closeRuntime!();
+    closeRuntime = null;
+
+    const restarted = await runSessiond();
+    closeRuntime = restarted.close;
+    const secondClient = new SessiondClient(
+      paths.socketPath,
+      paths.ipcTokenFile
+    );
+    await secondClient.start();
+    const sync = await secondClient.request<{ mode: string }>("sessions.sync", {
+      id: session.id,
+      afterSequence: 0
+    });
+
+    expect(sync.mode).toBe("snapshot");
     secondClient.stop();
   });
 
@@ -162,6 +201,414 @@ describe.sequential("session daemon integration", () => {
     expect(snapshot.tree?.nodes.length).toBeGreaterThan(0);
     expect(snapshot.tree?.activePathIds.length).toBeGreaterThan(0);
     await client.request("sessions.close", { id: session.id });
+    client.stop();
+  });
+
+  it("does not advance a snapshot past a final message before Pi persists it", async () => {
+    const { root, client } = await startRuntime();
+    let resolveMessageEnd!: () => void;
+    const messageEnded = new Promise<void>((resolve) => {
+      resolveMessageEnd = resolve;
+    });
+    client.on("event", (event: RealtimeEvent) => {
+      if (event.type === "pi.message_end") resolveMessageEnd();
+    });
+    const session = await client.request<SessionRecord>("sessions.create", {
+      cwd: root,
+      displayName: "snapshot persistence barrier",
+      prompt: "event-before-persist"
+    });
+
+    await messageEnded;
+    const snapshot = await client.request<SessionSnapshot>(
+      "sessions.snapshot",
+      { id: session.id }
+    );
+
+    expect(
+      snapshot.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          JSON.stringify(message.content).includes(
+            "Completed: event-before-persist"
+          )
+      )
+    ).toBe(true);
+    await client.request("sessions.close", { id: session.id });
+    client.stop();
+  });
+
+  it("deduplicates create and prompt mutations without swallowing retries", async () => {
+    const { root, client } = await startRuntime();
+    const events: RealtimeEvent[] = [];
+    client.on("event", (event: RealtimeEvent) => events.push(event));
+    const createMutationId = "4b650b13-d818-4931-b193-c2da51c2b27b";
+    const createPayload = {
+      mutationId: createMutationId,
+      cwd: root,
+      displayName: "idempotent",
+      images: []
+    };
+
+    const [first, concurrent] = await Promise.all([
+      client.request<SessionRecord>("sessions.create", createPayload),
+      client.request<SessionRecord>("sessions.create", createPayload)
+    ]);
+    expect(concurrent.id).toBe(first.id);
+    expect(
+      (await client.request<SessionRecord[]>("sessions.list")).filter(
+        (session) => session.displayName === "idempotent"
+      )
+    ).toHaveLength(1);
+    await expect(
+      client.request("sessions.create", {
+        ...createPayload,
+        displayName: "changed payload"
+      })
+    ).rejects.toMatchObject({
+      code: "MUTATION_ID_REUSED",
+      statusCode: 409
+    });
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: first.id
+          })
+        ).status === "waiting"
+    );
+
+    const promptMutationId = "eeacdf65-ec8c-46ce-8b10-709d292e4b7d";
+    const promptPayload = {
+      id: first.id,
+      mutationId: promptMutationId,
+      message: "slow tool task",
+      behavior: "prompt",
+      images: []
+    };
+    await Promise.all([
+      client.request("sessions.prompt", promptPayload),
+      client.request("sessions.prompt", promptPayload)
+    ]);
+    expect(
+      events.filter(
+        (event) =>
+          event.sessionId === first.id &&
+          event.type === "input.accepted"
+      )
+    ).toHaveLength(1);
+    await expect(
+      client.request("sessions.prompt", {
+        ...promptPayload,
+        message: "changed payload"
+      })
+    ).rejects.toMatchObject({
+      code: "MUTATION_ID_REUSED",
+      statusCode: 409
+    });
+
+    const retryMutationId = "8b7990a2-2436-44f9-a768-56689fd5e55e";
+    const retryPayload = {
+      id: first.id,
+      mutationId: retryMutationId,
+      message: "retry after busy",
+      behavior: "prompt",
+      images: []
+    };
+    await expect(
+      client.request("sessions.prompt", retryPayload)
+    ).rejects.toMatchObject({ code: "SESSION_BUSY" });
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: first.id
+          })
+        ).status === "waiting"
+    );
+    await client.request("sessions.prompt", retryPayload);
+
+    await Promise.all([
+      client.request("sessions.prompt", {
+        id: first.id,
+        mutationId: "156e6d65-e42f-4268-9b7b-32bf0fc4c257",
+        message: "first distinct follow-up",
+        behavior: "follow_up",
+        images: []
+      }),
+      client.request("sessions.prompt", {
+        id: first.id,
+        mutationId: "aa4cf4ad-47a0-4868-9644-b9a798772347",
+        message: "second distinct follow-up",
+        behavior: "follow_up",
+        images: []
+      })
+    ]);
+    expect(
+      events.filter(
+        (event) =>
+          event.sessionId === first.id &&
+          event.type === "input.accepted"
+      )
+    ).toHaveLength(4);
+    await client.request("sessions.close", { id: first.id });
+    client.stop();
+  });
+
+  it("recovers an incomplete durable create mutation in the original session", async () => {
+    const { root, client } = await startRuntime();
+    const paths = resolvePaths();
+    const mutationId = "6405643f-8575-4e5b-88fe-34ffbcba11c7";
+    const mutationPayload = {
+      cwd: root,
+      displayName: "recover pending create",
+      prompt: "recovered initial prompt",
+      createdBy: "web" as const
+    };
+    const direct = new SessionDatabase(paths.databaseFile);
+    const pending = direct.createOrReuseSession({
+      cwd: root,
+      displayName: mutationPayload.displayName,
+      createdBy: "web",
+      mutationId,
+      mutationFingerprint: fingerprintMutationPayload(mutationPayload)
+    });
+    direct.close();
+
+    const recovered = await client.request<SessionRecord>("sessions.create", {
+      mutationId,
+      cwd: root,
+      displayName: mutationPayload.displayName,
+      prompt: mutationPayload.prompt,
+      images: []
+    });
+
+    expect(recovered.id).toBe(pending.session.id);
+    expect(recovered.status).toBe("running");
+    const inspected = new SessionDatabase(paths.databaseFile);
+    expect(inspected.findCreateMutation(mutationId)?.completed).toBe(true);
+    inspected.close();
+    await client.request("sessions.close", { id: recovered.id });
+    client.stop();
+  });
+
+  it("serializes concurrent resumes without dropping either prompt", async () => {
+    const { root, client } = await startRuntime();
+    const events: RealtimeEvent[] = [];
+    client.on("event", (event: RealtimeEvent) => events.push(event));
+    const session = await client.request<SessionRecord>("sessions.create", {
+      cwd: root,
+      displayName: "single resume owner",
+      prompt: "persist for resume"
+    });
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: session.id
+          })
+        ).status === "waiting"
+    );
+    await client.request("sessions.close", { id: session.id });
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: session.id
+          })
+        ).status === "closed"
+    );
+    const readyBefore = events.filter(
+      (event) =>
+        event.sessionId === session.id && event.type === "session.ready"
+    ).length;
+
+    const resumed = await Promise.all([
+      client.request<SessionRecord>("sessions.resume", {
+        id: session.id,
+        mutationId: "5eb3c76b-ed61-4806-8c16-e811f6a99cba",
+        prompt: "first concurrent resume",
+        images: []
+      }),
+      client.request<SessionRecord>("sessions.resume", {
+        id: session.id,
+        mutationId: "92f17c59-710f-43f9-86a2-757ab7c95826",
+        prompt: "second concurrent resume",
+        images: []
+      })
+    ]);
+    await waitFor(
+      () =>
+        Promise.resolve(
+          events.filter(
+            (event) =>
+              event.sessionId === session.id &&
+              event.type === "session.ready"
+          ).length > readyBefore
+        )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(resumed.map((item) => item.id)).toEqual([
+      session.id,
+      session.id
+    ]);
+    expect(
+      events.filter(
+        (event) =>
+          event.sessionId === session.id && event.type === "session.ready"
+      )
+    ).toHaveLength(readyBefore + 1);
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: session.id
+          })
+        ).status === "waiting"
+    );
+    const snapshot = await client.request<SessionSnapshot>(
+      "sessions.snapshot",
+      { id: session.id }
+    );
+    const userMessages = snapshot.messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content);
+    expect(userMessages).toEqual([
+      "persist for resume",
+      "first concurrent resume",
+      "second concurrent resume"
+    ]);
+    await client.request<SessionRecord>("sessions.resume", {
+      id: session.id,
+      mutationId: "f8aa1200-802f-46a0-bca6-10ec72a1e8cc",
+      prompt: "resume while already active",
+      images: []
+    });
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: session.id
+          })
+        ).status === "waiting"
+    );
+    const activeSnapshot = await client.request<SessionSnapshot>(
+      "sessions.snapshot",
+      { id: session.id }
+    );
+    expect(
+      activeSnapshot.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content)
+    ).toEqual([...userMessages, "resume while already active"]);
+    await client.request("sessions.close", { id: session.id });
+    client.stop();
+  });
+
+  it("drains an accepted worker startup before releasing sessiond ownership", async () => {
+    const { root, client } = await startRuntime();
+    const session = await client.request<SessionRecord>("sessions.create", {
+      cwd: root,
+      displayName: "shutdown startup fence",
+      prompt: "persist before delayed resume"
+    });
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: session.id
+          })
+        ).status === "waiting"
+    );
+    await client.request("sessions.close", { id: session.id });
+    process.env.PI_WEB_FAKE_START_DELAY_MS = "300";
+    const resumed = client
+      .request<SessionRecord>("sessions.resume", {
+        id: session.id,
+        mutationId: "bd1c3b67-4c0b-468c-8f8e-68a21f194eb6",
+        images: []
+      })
+      .catch((error) => error);
+    await waitFor(
+      async () =>
+        (
+          await client.request<SessionRecord>("sessions.get", {
+            id: session.id
+          })
+        ).status === "starting"
+    );
+
+    let closeSettled = false;
+    const closing = closeRuntime!().then(() => {
+      closeSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(closeSettled).toBe(false);
+    await closing;
+    closeRuntime = null;
+    await resumed;
+    client.stop();
+
+    const nextOwner = await acquireSessiondOwnerLease(resolvePaths());
+    await nextOwner.release();
+  });
+
+  it("reserves global worker capacity across concurrent directory checks", async () => {
+    process.env.PI_WEB_MAX_CONCURRENT_WORKERS = "1";
+    const { root, client } = await startRuntime();
+    const createPersistedSession = async (displayName: string) => {
+      const session = await client.request<SessionRecord>("sessions.create", {
+        cwd: root,
+        displayName,
+        prompt: `persist ${displayName}`
+      });
+      await waitFor(
+        async () =>
+          (
+            await client.request<SessionRecord>("sessions.get", {
+              id: session.id
+            })
+          ).status === "waiting"
+      );
+      await client.request("sessions.close", { id: session.id });
+      await waitFor(
+        async () =>
+          (
+            await client.request<SessionRecord>("sessions.get", {
+              id: session.id
+            })
+          ).status === "closed"
+      );
+      return session;
+    };
+    const first = await createPersistedSession("capacity first");
+    const second = await createPersistedSession("capacity second");
+
+    const attempts = await Promise.allSettled([
+      client.request<SessionRecord>("sessions.resume", {
+        id: first.id,
+        mutationId: "d2a2baf0-2d11-44c7-a1bd-1bb2a4b8f8ef",
+        images: []
+      }),
+      client.request<SessionRecord>("sessions.resume", {
+        id: second.id,
+        mutationId: "0207459d-84de-45e8-8302-e9822f985e41",
+        images: []
+      })
+    ]);
+
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === "rejected")).toEqual([
+      expect.objectContaining({
+        reason: expect.objectContaining({ code: "WORKER_LIMIT" })
+      })
+    ]);
+    const active = attempts.find(
+      (attempt): attempt is PromiseFulfilledResult<SessionRecord> =>
+        attempt.status === "fulfilled"
+    )!.value;
+    await client.request("sessions.close", { id: active.id });
     client.stop();
   });
 

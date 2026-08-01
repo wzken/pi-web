@@ -19,4 +19,8 @@
         : "light";
   root.dataset.colorMode = resolved;
   root.style.colorScheme = resolved;
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) {
+    themeColor.content = resolved === "dark" ? "#0b0b0c" : "#f7f7f8";
+  }
 })();

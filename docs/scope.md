@@ -20,8 +20,10 @@ capabilities.
   a restricted `pi_web_schedule` extension tool.
 - Contained file browsing, native-safe previews, upload, create, rename, and
   relative-path copy. Destructive deletion and overwrite are excluded.
-- Pi packages, skills, extensions, templates, providers, and models are
-  surfaced without creating a second capability system.
+- Pi CLI version, available models, and user-scoped package operations are
+  surfaced directly. Project packages, skills, extensions, and prompt templates
+  remain session capabilities resolved by each Pi worker; Pi Web does not
+  maintain a parallel resource registry.
 - Declarative ZIP theme packs with dual light/dark modes and safe recovery.
 - An authenticated per-session terminal constrained to the current allowed
   workspace roots, with a short reconnect window and explicit stop.

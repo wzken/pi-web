@@ -9,17 +9,28 @@ import type {
 } from "../types";
 import { asRecord, extractText } from "./session-parsing";
 
+const liveTextCharacterLimit = 1_000_000;
+
 export function snapshotToolEvents(
   snapshot: SessionSnapshot
 ): RealtimeEvent[] {
-  const value = asRecord(snapshot.state).recentToolEvents;
-  if (!Array.isArray(value)) return [];
-  return value.filter(
+  const events: unknown = snapshot.recentToolEvents;
+  if (!Array.isArray(events)) return [];
+  return events.filter(
     (event): event is RealtimeEvent =>
       Boolean(event) &&
       typeof event === "object" &&
       typeof (event as RealtimeEvent).type === "string" &&
       typeof (event as RealtimeEvent).sequence === "number"
+  );
+}
+
+export function shouldReconcileSnapshot(event: RealtimeEvent): boolean {
+  return (
+    event.type === "pi.message_end" ||
+    event.type === "pi.agent_settled" ||
+    event.type === "session.ready" ||
+    event.type === "session.worker_exit"
   );
 }
 
@@ -55,10 +66,18 @@ export function applyRealtimeEvent(
   let snapshot = state.snapshot;
   if (snapshot && snapshot.session.id === event.sessionId) {
     const payload = asRecord(event.payload);
+    const queuedMessages =
+      event.type === "pi.queue_update"
+        ? {
+            steering: stringArray(payload.steering),
+            followUp: stringArray(payload.followUp)
+          }
+        : snapshot.queuedMessages;
     if (event.type === "session.status" && typeof payload.status === "string") {
       snapshot = {
         ...snapshot,
         sequence: event.sequence,
+        queuedMessages,
         session: {
           ...snapshot.session,
           status: payload.status as SessionStatus,
@@ -72,6 +91,7 @@ export function applyRealtimeEvent(
       snapshot = {
         ...snapshot,
         sequence: event.sequence,
+        queuedMessages,
         session: {
           ...snapshot.session,
           displayName: payload.displayName,
@@ -79,30 +99,27 @@ export function applyRealtimeEvent(
         }
       };
     } else {
-      snapshot = { ...snapshot, sequence: event.sequence };
+      snapshot = { ...snapshot, sequence: event.sequence, queuedMessages };
     }
   }
 
   const text =
     event.type === "pi.message_update" ? extractText(event.payload) : "";
+  const liveText =
+    event.type === "pi.agent_start" || event.type === "pi.message_end"
+      ? ""
+      : text
+        ? `${state.liveText}${text}`.slice(-liveTextCharacterLimit)
+        : state.liveText;
   const activities = event.type.startsWith("pi.tool_execution_")
     ? mergeActivityEvent(state.activities, event).slice(-50)
     : state.activities;
-  const queuePayload = asRecord(event.payload);
-  const queuedMessages =
-    event.type === "pi.queue_update"
-      ? {
-          steering: stringArray(queuePayload.steering),
-          followUp: stringArray(queuePayload.followUp)
-        }
-      : state.queuedMessages;
 
   return {
     ...state,
     snapshot,
     activities,
-    liveText: text ? state.liveText + text : state.liveText,
-    queuedMessages
+    liveText
   };
 }
 

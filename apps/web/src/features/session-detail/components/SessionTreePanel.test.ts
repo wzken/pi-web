@@ -1,6 +1,9 @@
 import type { SessionTreeSnapshot } from "@pi-web/protocol";
 import { describe, expect, it } from "vitest";
-import { buildSessionTreeRows } from "./SessionTreePanel";
+import {
+  buildSessionTreeRows,
+  hasSessionTreeBranches
+} from "./SessionTreePanel";
 
 describe("buildSessionTreeRows", () => {
   it("marks the active branch, current leaf, and branch points", () => {
@@ -60,5 +63,34 @@ describe("buildSessionTreeRows", () => {
       active: false,
       depth: 1
     });
+    expect(hasSessionTreeBranches(tree)).toBe(true);
+  });
+
+  it("does not promote a linear history as a branch", () => {
+    expect(
+      hasSessionTreeBranches({
+        nodes: [
+          {
+            id: "root",
+            parentId: null,
+            type: "message",
+            role: "user",
+            summary: "start",
+            timestamp: null
+          },
+          {
+            id: "answer",
+            parentId: "root",
+            type: "message",
+            role: "assistant",
+            summary: "answer",
+            timestamp: null
+          }
+        ],
+        leafId: "answer",
+        activePathIds: ["root", "answer"],
+        truncated: false
+      })
+    ).toBe(false);
   });
 });

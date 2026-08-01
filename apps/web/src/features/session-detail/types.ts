@@ -1,7 +1,4 @@
-import type {
-  QueuedMessages,
-  SessionSnapshot
-} from "@pi-web/protocol";
+import type { SessionSnapshot } from "@pi-web/protocol";
 
 export interface ActivityItem {
   id: string;
@@ -24,25 +21,25 @@ export interface SessionDetailState {
   connectionState: ConnectionState;
   replayBusy: boolean;
   controlBusy: SessionControlAction | null;
+  firstItemIndex: number;
   clock: number;
-  queuedMessages: QueuedMessages;
 }
 
 export type SessionDetailAction =
   | { type: "reset" }
-  | { type: "snapshot.refreshed"; snapshot: SessionSnapshot }
-  | { type: "snapshot.synced"; snapshot: SessionSnapshot }
+  | {
+      type: "projection.replaced";
+      snapshot: SessionSnapshot;
+    }
   | { type: "history.loaded"; snapshot: SessionSnapshot; sessionId: string }
-  | { type: "realtime.event"; event: import("@pi-web/protocol").RealtimeEvent }
+  | {
+      type: "projection.event";
+      event: import("@pi-web/protocol").RealtimeEvent;
+    }
   | {
       type: "session.updated";
       session: import("@pi-web/protocol").SessionRecord;
     }
-  | {
-      type: "session.status";
-      status: import("@pi-web/protocol").SessionStatus;
-    }
-  | { type: "liveText.clear" }
   | { type: "error.set"; error: unknown }
   | { type: "connection.set"; state: ConnectionState }
   | { type: "replayBusy.set"; busy: boolean }

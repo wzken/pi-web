@@ -5,6 +5,7 @@ import type {
 import { useCallback, useRef, type Dispatch } from "react";
 import { api, jsonBody } from "../../../api";
 import { useToast } from "../../../components";
+import { PendingMutationTracker } from "../../../mutation-id";
 import type { RetryablePrompt } from "../../../session-messages";
 import type {
   SessionControlAction,
@@ -29,6 +30,8 @@ export function useSessionControls({
   const toast = useToast();
   const controlInFlight = useRef(false);
   const replayInFlight = useRef(false);
+  const resumeMutation = useRef(new PendingMutationTracker());
+  const replayMutation = useRef(new PendingMutationTracker());
 
   const control = useCallback(
     async (action: SessionControlAction): Promise<boolean> => {
@@ -37,10 +40,19 @@ export function useSessionControls({
       dispatch({ type: "controlBusy.set", action });
       dispatch({ type: "error.set", error: null });
       try {
+        const mutationId =
+          action === "resume"
+            ? resumeMutation.current.reserve({
+                operation: "sessions.resume",
+                sessionId,
+                payload: {}
+              })
+            : null;
         await api(`/api/sessions/${sessionId}/${action}`, {
           method: "POST",
-          ...jsonBody({})
+          ...jsonBody(mutationId ? { mutationId } : {})
         });
+        if (mutationId) resumeMutation.current.confirm(mutationId);
         toast.push(
           action === "abort"
             ? t("已请求中止当前轮次")
@@ -84,23 +96,24 @@ export function useSessionControls({
       dispatch({ type: "error.set", error: null });
       try {
         const waiting = status === "waiting";
+        const path = waiting ? "messages" : "resume";
+        const payload = waiting
+          ? { ...prompt, behavior: "prompt" as const }
+          : { prompt: prompt.message, images: prompt.images };
+        const mutationId = replayMutation.current.reserve({
+          operation: waiting ? "sessions.prompt" : "sessions.resume",
+          sessionId,
+          payload
+        });
         await api(
-          waiting
-            ? `/api/sessions/${sessionId}/messages`
-            : `/api/sessions/${sessionId}/resume`,
+          `/api/sessions/${sessionId}/${path}`,
           {
             method: "POST",
-            ...jsonBody(
-              waiting
-                ? { ...prompt, behavior: "prompt" }
-                : { prompt: prompt.message, images: prompt.images }
-            )
+            ...jsonBody({ ...payload, mutationId })
           }
         );
-        dispatch({
-          type: "session.status",
-          status: waiting ? "running" : "starting"
-        });
+        replayMutation.current.confirm(mutationId);
+        await refresh();
         toast.push(t("最后一条指令已重新发送"));
       } catch (error) {
         dispatch({ type: "error.set", error });
@@ -109,7 +122,7 @@ export function useSessionControls({
         dispatch({ type: "replayBusy.set", busy: false });
       }
     },
-    [dispatch, sessionId, toast]
+    [dispatch, refresh, sessionId, toast]
   );
 
   const exportSession = useCallback(() => {

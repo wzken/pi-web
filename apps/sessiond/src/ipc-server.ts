@@ -5,6 +5,7 @@ import { relative } from "node:path";
 import type { PiWebConfig, PiWebPaths } from "@pi-web/config";
 import { loadConfig, publicConfig, saveConfig } from "@pi-web/config";
 import {
+  authRotateSchema,
   createSessionSchema,
   isInternalMessage,
   maxPromptRequestBytes,
@@ -12,9 +13,11 @@ import {
   resumeSessionSchema,
   sessionRenameSchema,
   settingsUpdateSchema,
+  type AuthRotateResult,
   type InternalRequest,
   type InternalResponse,
-  type RealtimeEvent
+  type RealtimeEvent,
+  type SessiondDoctorResult
 } from "@pi-web/protocol";
 import {
   nowIso,
@@ -22,13 +25,14 @@ import {
   PiWebError,
   redact,
   resolveAllowedDirectory,
-  resolveContainedPath,
-  safeErrorMessage
+  resolveContainedPath
 } from "@pi-web/shared";
 import { LfJsonlDecoder, encodeJsonl } from "@pi-web/pi-rpc";
+import { z } from "zod";
 import { SessionDatabase } from "./database.js";
 import { PiManager } from "./pi-manager.js";
 import { Scheduler } from "./scheduler.js";
+import { SessionFolderStore } from "./session-folders.js";
 import { SessionSupervisor } from "./supervisor.js";
 
 export type IpcRole = "unknown" | "server" | "extension";
@@ -45,9 +49,13 @@ export class IpcServer {
   readonly #supervisor: SessionSupervisor;
   readonly #scheduler: Scheduler;
   readonly #piManager: PiManager;
+  readonly #sessionFolders: SessionFolderStore;
   readonly #connections = new Set<Connection>();
+  readonly #inFlight = new Set<Promise<void>>();
   readonly #serverToken = generateSessionToken();
   #server: Server | null = null;
+  #stopping = false;
+  #stopPromise: Promise<void> | null = null;
 
   constructor(options: {
     paths: PiWebPaths;
@@ -56,6 +64,7 @@ export class IpcServer {
     supervisor: SessionSupervisor;
     scheduler: Scheduler;
     piManager: PiManager;
+    sessionFolders: SessionFolderStore;
   }) {
     this.#paths = options.paths;
     this.#config = options.config;
@@ -63,6 +72,7 @@ export class IpcServer {
     this.#supervisor = options.supervisor;
     this.#scheduler = options.scheduler;
     this.#piManager = options.piManager;
+    this.#sessionFolders = options.sessionFolders;
     this.#supervisor.on("event", (event: RealtimeEvent) => this.#broadcast(event));
   }
 
@@ -89,12 +99,21 @@ export class IpcServer {
     }
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    this.#stopPromise ??= this.#stop();
+    return this.#stopPromise;
+  }
+
+  async #stop(): Promise<void> {
+    this.#stopping = true;
     for (const connection of this.#connections) connection.socket.destroy();
     this.#connections.clear();
     if (this.#server) {
       await new Promise<void>((resolve) => this.#server!.close(() => resolve()));
       this.#server = null;
+    }
+    while (this.#inFlight.size > 0) {
+      await Promise.allSettled([...this.#inFlight]);
     }
     if (process.platform !== "win32") {
       await unlink(this.#paths.socketPath).catch(() => undefined);
@@ -103,6 +122,10 @@ export class IpcServer {
   }
 
   #accept(socket: Socket): void {
+    if (this.#stopping) {
+      socket.destroy();
+      return;
+    }
     socket.setNoDelay(true);
     const connection: Connection = { socket, role: "unknown" };
     this.#connections.add(connection);
@@ -114,18 +137,31 @@ export class IpcServer {
             kind: "response",
             id: "unknown",
             ok: false,
-            error: { code: "INVALID_REQUEST", message: "Invalid IPC request" }
+            error: {
+              code: "INVALID_REQUEST",
+              message: "Invalid IPC request",
+              statusCode: 400
+            }
           });
           return;
         }
-        void this.#handle(connection, value);
+        if (this.#stopping) return;
+        const handling = this.#handle(connection, value);
+        this.#inFlight.add(handling);
+        void handling
+          .finally(() => this.#inFlight.delete(handling))
+          .catch(() => undefined);
       },
-      onError: (error) => {
+      onError: (_error) => {
         this.#write(connection, {
           kind: "response",
           id: "unknown",
           ok: false,
-          error: { code: "INVALID_JSON", message: error.message }
+          error: {
+            code: "INVALID_JSON",
+            message: "Invalid IPC JSON",
+            statusCode: 400
+          }
         });
         connection.socket.end();
       }
@@ -153,18 +189,11 @@ export class IpcServer {
         result
       });
     } catch (error) {
-      const known = error instanceof PiWebError ? error : null;
       this.#write(connection, {
         kind: "response",
         id: request.id,
         ok: false,
-        error: {
-          code: known?.code ?? "INTERNAL_ERROR",
-          message: known?.message ?? safeErrorMessage(error),
-          ...(known?.details === undefined
-            ? {}
-            : { details: redact(known.details) })
-        }
+        error: toInternalResponseError(error)
       });
     }
   }
@@ -195,6 +224,9 @@ export class IpcServer {
       case "sessions.create": {
         const input = createSessionSchema.parse(params);
         return await this.#supervisor.create({
+          ...(input.mutationId === undefined
+            ? {}
+            : { mutationId: input.mutationId }),
           cwd: input.cwd,
           displayName: input.displayName,
           ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
@@ -214,7 +246,8 @@ export class IpcServer {
         return await this.#supervisor.resume(
           stringParam(params, "id"),
           input.prompt,
-          input.images
+          input.images,
+          input.mutationId
         );
       }
       case "sessions.prompt": {
@@ -223,7 +256,8 @@ export class IpcServer {
           stringParam(params, "id"),
           input.message,
           input.behavior,
-          input.images
+          input.images,
+          input.mutationId
         );
         return { accepted: true };
       }
@@ -254,6 +288,22 @@ export class IpcServer {
         return await this.#supervisor.sync(
           stringParam(params, "id"),
           numberParam(params, "afterSequence", 0)
+        );
+      case "session_folders.get":
+        return this.#sessionFolders.get();
+      case "session_folders.create":
+        return this.#sessionFolders.create(params);
+      case "session_folders.rename":
+        return this.#sessionFolders.rename(
+          stringParam(params, "id"),
+          params
+        );
+      case "session_folders.remove":
+        return this.#sessionFolders.remove(stringParam(params, "id"));
+      case "session_folders.assign":
+        return this.#sessionFolders.assign(
+          stringParam(params, "sessionId"),
+          params
         );
       case "directories.list":
         return this.#db.listDirectories();
@@ -318,6 +368,11 @@ export class IpcServer {
         this.#db.setSetting("access_key_hash", params.hash);
         this.#db.audit("access_key.set", "success", "system");
         return { updated: true };
+      case "auth.rotate": {
+        const input = authRotateSchema.parse(params);
+        this.#db.rotateAccessKey(input);
+        return { updated: true } satisfies AuthRotateResult;
+      }
       case "auth.get_sessions":
         return this.#db.getSetting("auth_sessions");
       case "auth.set_sessions":
@@ -339,7 +394,7 @@ export class IpcServer {
           scheduler: true,
           activeWorkers: this.#supervisor.activeCount,
           pi: await this.#piManager.doctorProbe()
-        };
+        } satisfies SessiondDoctorResult;
       default:
         throw new PiWebError("METHOD_NOT_FOUND", `Unknown IPC method: ${method}`, 404);
     }
@@ -459,6 +514,37 @@ export class IpcServer {
     }
     await unlink(this.#paths.socketPath);
   }
+}
+
+export function toInternalResponseError(
+  error: unknown
+): NonNullable<InternalResponse["error"]> {
+  if (error instanceof z.ZodError) {
+    return {
+      code: "VALIDATION_ERROR",
+      message: "IPC request validation failed",
+      statusCode: 400
+    };
+  }
+  if (!(error instanceof PiWebError)) {
+    return {
+      code: "INTERNAL_ERROR",
+      message: "Internal server error",
+      statusCode: 500
+    };
+  }
+  return {
+    code: error.code,
+    message: error.message,
+    statusCode: normalizeErrorStatus(error.statusCode),
+    ...(error.details === undefined ? {} : { details: redact(error.details) })
+  };
+}
+
+function normalizeErrorStatus(statusCode: number): number {
+  return Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599
+    ? statusCode
+    : 500;
 }
 
 export function authorizeIpcRequest(
