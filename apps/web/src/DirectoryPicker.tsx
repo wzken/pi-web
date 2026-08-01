@@ -143,6 +143,7 @@ export function DirectoryPicker({
         open={open}
         labelledBy="directory-picker-title"
         className={ui("directory-picker-dialog")}
+        maxWidth={620}
         onClose={() => {
           if (!choosing) {
             loadController.current?.abort();

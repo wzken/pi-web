@@ -4,8 +4,13 @@ import type {
   ThinkingLevel
 } from "@pi-web/protocol";
 import { CircleStop, Send } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, jsonBody } from "../../../api";
+import {
+  draftAfterSuccessfulSubmit,
+  resolveComposerSubmissionRoute,
+  shouldSubmitComposerInput
+} from "../../../composer-input";
 import { Button } from "../../../components";
 import { clearDraft, readDraft, writeDraft } from "../../../draft-store";
 import {
@@ -20,6 +25,7 @@ import {
   ImageAttachmentTray,
   useImageAttachmentDraft
 } from "../../../ImageAttachments";
+import { PendingMutationTracker } from "../../../mutation-id";
 import { RuntimeSettings } from "./RuntimeSettings";
 import { QueuedMessagesPanel } from "./QueuedMessagesPanel";
 import { t } from "../../../i18n";
@@ -34,7 +40,6 @@ interface ComposerProps {
   connected: boolean;
   queuedMessages: QueuedMessages;
   onAbort: () => Promise<boolean>;
-  onSent: () => void;
   onError: (error: unknown) => void;
   onRuntimeUpdated: () => Promise<void>;
 }
@@ -48,27 +53,32 @@ export function Composer({
   connected,
   queuedMessages,
   onAbort,
-  onSent,
   onError,
   onRuntimeUpdated
 }: ComposerProps) {
   const draftScope = `session:${sessionId}`;
   const [message, setMessage] = useState(() => readDraft(draftScope));
+  const messageRef = useRef(message);
   const {
     images,
     setImages,
     clear: clearImages
   } = useImageAttachmentDraft(draftScope);
   const [files, setFiles] = useState<PendingFileAttachment[]>([]);
-  const [mode, setMode] = useState<"steer" | "follow_up">("follow_up");
+  const [mode, setMode] = useState<"steer" | "follow_up">("steer");
   const [busy, setBusy] = useState(false);
   const [stopBusy, setStopBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const promptMutation = useRef(new PendingMutationTracker());
+  const oneTimeFollowUp = useRef(false);
   const active = ["starting", "running", "waiting", "stopping"].includes(
     status
   );
   const running = status === "running";
-  const canCompose = connected && (status === "waiting" || running);
+  const submissionRoute = resolveComposerSubmissionRoute(status, mode);
+  const canCompose = connected && submissionRoute !== null;
+  const resumesOnSubmit =
+    connected && submissionRoute?.path === "resume";
   const effectiveMode = running ? mode : "prompt";
 
   useEffect(() => {
@@ -79,41 +89,73 @@ export function Composer({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const followUpOverride = oneTimeFollowUp.current;
+    oneTimeFollowUp.current = false;
+    const route = resolveComposerSubmissionRoute(
+      status,
+      mode,
+      followUpOverride
+    );
     const value = message.trim();
     if (
       (!value && images.length === 0 && files.length === 0) ||
       !canCompose ||
+      route === null ||
       busy
     ) {
       return;
     }
     setBusy(true);
+    const submittedDraft = message;
     try {
       const uploaded = await uploadAttachments(cwd, files);
-      await api(`/api/sessions/${sessionId}/messages`, {
+      const submittedMessage = appendAttachmentReferences(value, uploaded);
+      const submittedImages = images.map(({ type, mimeType, data }) => ({
+        type,
+        mimeType,
+        data
+      }));
+      const payload =
+        route.path === "resume"
+          ? {
+              prompt: submittedMessage,
+              images: submittedImages
+            }
+          : {
+              message: submittedMessage,
+              images: submittedImages,
+              behavior: route.behavior
+            };
+      const mutationId = promptMutation.current.reserve({
+        operation: route.operation,
+        sessionId,
+        payload
+      });
+      await api(`/api/sessions/${sessionId}/${route.path}`, {
         method: "POST",
         ...jsonBody({
-          message: appendAttachmentReferences(value, uploaded),
-          images: images.map(({ type, mimeType, data }) => ({
-            type,
-            mimeType,
-            data
-          })),
-          behavior: effectiveMode
+          ...payload,
+          mutationId
         })
       });
-      setMessage("");
+      promptMutation.current.confirm(mutationId);
+      const nextDraft = draftAfterSuccessfulSubmit(
+        messageRef.current,
+        submittedDraft
+      );
+      messageRef.current = nextDraft;
+      setMessage(nextDraft);
       await clearImages();
       setFiles([]);
-      clearDraft(draftScope);
+      if (nextDraft) writeDraft(draftScope, nextDraft);
+      else clearDraft(draftScope);
       if (running) {
         setFeedback(
-          effectiveMode === "steer"
+          route.path === "messages" && route.behavior === "steer"
             ? t("已发送为立即引导，Pi 会在下一个可中断点调整方向。")
             : t("消息已排队，将在当前任务完成后发送。")
         );
       }
-      onSent();
     } catch (error) {
       onError(error);
     } finally {
@@ -144,6 +186,7 @@ export function Composer({
               variant="toolbar"
               size="sm"
               active={effectiveMode === "follow_up"}
+              disabled={busy}
               onClick={() => setMode("follow_up")}
             >
               {t("完成后排队")}
@@ -153,6 +196,7 @@ export function Composer({
               variant="toolbar"
               size="sm"
               active={effectiveMode === "steer"}
+              disabled={busy}
               onClick={() => setMode("steer")}
             >
               {t("立即引导")}
@@ -166,9 +210,11 @@ export function Composer({
                 ? t("Pi 正在启动")
                 : status === "stopping"
                   ? t("正在停止当前任务")
-                  : connected
-                    ? t("恢复会话后才能发送")
-                    : t("等待实时连接")}
+                  : resumesOnSubmit
+                    ? t("发送指令并恢复会话")
+                    : connected
+                      ? t("恢复会话后才能发送")
+                      : t("等待实时连接")}
           </span>
         )}
         {feedback && (
@@ -176,6 +222,14 @@ export function Composer({
             {feedback}
           </span>
         )}
+        <RuntimeSettings
+          sessionId={sessionId}
+          model={model}
+          thinkingLevel={thinkingLevel}
+          active={active && connected}
+          onError={onError}
+          onUpdated={onRuntimeUpdated}
+        />
       </div>
       <QueuedMessagesPanel queuedMessages={queuedMessages} />
       <ImageAttachmentTray
@@ -201,12 +255,15 @@ export function Composer({
           rows={2}
           value={message}
           disabled={!canCompose}
+          aria-label={t("给 Pi 一条新指令…")}
           onChange={(event) => {
             const value = event.target.value;
+            messageRef.current = value;
             setMessage(value);
             writeDraft(draftScope, value);
           }}
           onPaste={(event) => {
+            if (busy) return;
             const files = Array.from(event.clipboardData.items)
               .filter((item) => item.type.startsWith("image/"))
               .map((item) => item.getAsFile())
@@ -218,8 +275,16 @@ export function Composer({
               .catch(onError);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (
+              shouldSubmitComposerInput({
+                key: event.key,
+                shiftKey: event.shiftKey,
+                isComposing: event.nativeEvent.isComposing,
+                keyCode: event.keyCode
+              })
+            ) {
               event.preventDefault();
+              oneTimeFollowUp.current = running && event.altKey;
               event.currentTarget.form?.requestSubmit();
             }
           }}
@@ -228,9 +293,11 @@ export function Composer({
               ? effectiveMode === "steer"
                 ? t("调整 Pi 当前方向…")
                 : t("安排当前任务完成后的下一步…")
-              : connected
-                ? t("给 Pi 一条新指令…")
-                : t("实时连接恢复后可发送，草稿会保留…")
+              : resumesOnSubmit
+                ? t("输入新指令，发送后恢复会话…")
+                : connected
+                  ? t("给 Pi 一条新指令…")
+                  : t("实时连接恢复后可发送，草稿会保留…")
           }
         />
         {running && (
@@ -260,6 +327,8 @@ export function Composer({
               ? effectiveMode === "steer"
                 ? t("立即引导")
                 : t("排队发送")
+              : resumesOnSubmit
+                ? t("发送并恢复")
               : t("发送")
           }
           tooltip={
@@ -267,6 +336,8 @@ export function Composer({
               ? effectiveMode === "steer"
                 ? t("立即引导当前任务")
                 : t("当前任务完成后发送")
+              : resumesOnSubmit
+                ? t("发送新指令并恢复会话")
               : t("发送")
           }
           size="icon"
@@ -275,16 +346,14 @@ export function Composer({
         </Button>
       </div>
       <div className={ui("composer-meta")}>
-        <RuntimeSettings
-          sessionId={sessionId}
-          model={model}
-          thinkingLevel={thinkingLevel}
-          active={active && connected}
-          onError={onError}
-          onUpdated={onRuntimeUpdated}
-        />
-        <span>{thinkingLevel ?? t("默认思考")}</span>
-        <span>{t("Enter 发送 · Shift+Enter 换行")}</span>
+        <span className={ui("composer-thinking-status")}>
+          {thinkingLevel ?? t("默认思考")}
+        </span>
+        <span className={ui("composer-shortcut-hint")}>
+          {running
+            ? t("Enter 按当前模式发送 · Alt+Enter 完成后排队 · Shift+Enter 换行")
+            : t("Enter 发送 · Shift+Enter 换行")}
+        </span>
       </div>
     </form>
   );

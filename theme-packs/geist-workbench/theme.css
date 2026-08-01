@@ -47,11 +47,8 @@ html[data-theme-id="geist-workbench"] .nav-link.active::before {
 
 html[data-theme-id="geist-workbench"] .panel,
 html[data-theme-id="geist-workbench"] .session-card,
-html[data-theme-id="geist-workbench"] .schedule-card,
 html[data-theme-id="geist-workbench"] .toolbar,
 html[data-theme-id="geist-workbench"] .dialog,
-html[data-theme-id="geist-workbench"] .theme-choice,
-html[data-theme-id="geist-workbench"] .background-preview,
 html[data-theme-id="geist-workbench"] .composer-box,
 html[data-theme-id="geist-workbench"] .terminal-panel {
   border-color: var(--line);

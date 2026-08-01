@@ -10,8 +10,8 @@ import type {
 
 interface SessionEntry {
   type: string;
-  id?: string;
-  parentId?: string | null;
+  id: string;
+  parentId: string | null;
   timestamp?: string;
   message?: PiMessage;
   [key: string]: unknown;
@@ -20,7 +20,9 @@ interface SessionEntry {
 interface CachedSession {
   signature: string;
   header: Record<string, unknown> | null;
+  allEntries: SessionEntry[];
   activeEntries: SessionEntry[];
+  contextEntries: SessionEntry[];
   tree: SessionTreeSnapshot;
 }
 
@@ -42,6 +44,13 @@ export interface SessionReadResult {
 const cache = new Map<string, CachedSession>();
 const MAX_CACHE_ITEMS = 64;
 
+export class PiSessionCursorError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PiSessionCursorError";
+  }
+}
+
 export async function readPiSession(
   file: string,
   options: SessionReadOptions = {}
@@ -60,24 +69,21 @@ export async function readPiSession(
   }
 
   const limit = Math.max(1, Math.min(options.limit ?? 200, 1000));
-  const total = cached.activeEntries.length;
-  const end = decodeCursor(options.cursor) ?? total;
+  const total = cached.contextEntries.length;
+  const end = decodeCursor(options.cursor, cached.signature) ?? total;
   const safeEnd = Math.max(0, Math.min(end, total));
   const start = Math.max(0, safeEnd - limit);
-  const entries = cached.activeEntries.slice(start, safeEnd);
-  const messages = entries
-    .filter((entry): entry is SessionEntry & { message: PiMessage } =>
-      entry.type === "message" && !!entry.message
-    )
-    .map((entry) => entry.message);
+  const entries = cached.contextEntries.slice(start, safeEnd);
+  const messages = entries.flatMap(projectContextMessages);
 
   return {
     header: cached.header,
     entries,
     messages,
     truncated: start > 0,
-    nextCursor: start > 0 ? encodeCursor(start) : null,
-    usage: aggregateUsage(cached.activeEntries),
+    nextCursor:
+      start > 0 ? encodeCursor(cached.signature, start) : null,
+    usage: aggregateUsage(cached.allEntries),
     tree: cached.tree
   };
 }
@@ -106,20 +112,32 @@ async function parseSession(
       resolve();
     });
   });
-  if (errors.length > 0 && records.length === 0) throw errors[0];
+  if (errors.length > 0) throw errors[0];
 
-  const headerIndex = records.findIndex((entry) => entry.type === "session");
-  const header =
-    headerIndex >= 0 ? (records[headerIndex] as Record<string, unknown>) : null;
-  const tree = records.filter(
-    (entry) => typeof entry.id === "string" && "parentId" in entry
-  );
-  const byId = new Map(tree.map((entry) => [entry.id as string, entry]));
+  const header = validateHeader(records[0]);
+  const tree = records.slice(1).map(validateEntry);
+  const byId = new Map<string, SessionEntry>();
+  for (const entry of tree) {
+    if (byId.has(entry.id)) {
+      throw new Error(`Duplicate Pi session entry id: ${entry.id}`);
+    }
+    byId.set(entry.id, entry);
+  }
+  for (const entry of tree) {
+    if (entry.parentId !== null && !byId.has(entry.parentId)) {
+      throw new Error(
+        `Pi session entry ${entry.id} references missing parent ${entry.parentId}`
+      );
+    }
+  }
   const leaf = tree.at(-1);
   const active: SessionEntry[] = [];
   const visited = new Set<string>();
   let current = leaf;
-  while (current?.id && !visited.has(current.id)) {
+  while (current) {
+    if (visited.has(current.id)) {
+      throw new Error(`Cycle in Pi session tree at entry ${current.id}`);
+    }
     visited.add(current.id);
     active.push(current);
     current =
@@ -131,9 +149,115 @@ async function parseSession(
   return {
     signature,
     header,
+    allEntries: tree,
     activeEntries: active,
+    contextEntries: selectContextEntries(active),
     tree: projectTree(tree, active)
   };
+}
+
+function validateHeader(
+  value: SessionEntry | undefined
+): Record<string, unknown> {
+  if (!value || value.type !== "session") {
+    throw new Error("Pi session header is missing");
+  }
+  if (value.version !== 3) {
+    throw new Error(
+      `Unsupported Pi session version: ${String(value.version ?? "unknown")}`
+    );
+  }
+  return value as Record<string, unknown>;
+}
+
+function validateEntry(value: SessionEntry): SessionEntry {
+  if (
+    typeof value.id !== "string" ||
+    value.id.length === 0 ||
+    !("parentId" in value) ||
+    (value.parentId !== null && typeof value.parentId !== "string")
+  ) {
+    throw new Error("Invalid Pi session tree entry");
+  }
+  if (
+    value.type === "message" &&
+    (!value.message || typeof value.message.role !== "string")
+  ) {
+    throw new Error(`Invalid Pi message entry: ${value.id}`);
+  }
+  return value;
+}
+
+function selectContextEntries(active: SessionEntry[]): SessionEntry[] {
+  const compaction = active.findLast((entry) => entry.type === "compaction");
+  if (!compaction) return active;
+  const compactionIndex = active.indexOf(compaction);
+  const selected = [compaction];
+  const firstKeptEntryId =
+    typeof compaction.firstKeptEntryId === "string"
+      ? compaction.firstKeptEntryId
+      : null;
+  let keeping = false;
+  for (let index = 0; index < compactionIndex; index += 1) {
+    const entry = active[index]!;
+    if (entry.id === firstKeptEntryId) keeping = true;
+    if (keeping) selected.push(entry);
+  }
+  selected.push(...active.slice(compactionIndex + 1));
+  return selected;
+}
+
+function projectContextMessages(entry: SessionEntry): PiMessage[] {
+  if (entry.type === "message" && entry.message) return [entry.message];
+  if (
+    entry.type === "custom_message" &&
+    typeof entry.customType === "string" &&
+    (typeof entry.content === "string" || Array.isArray(entry.content))
+  ) {
+    return [
+      {
+        role: "custom",
+        customType: entry.customType,
+        content: entry.content,
+        display: entry.display === true,
+        details: entry.details,
+        ...(entry.timestamp === undefined
+          ? {}
+          : { timestamp: entry.timestamp })
+      }
+    ];
+  }
+  if (
+    entry.type === "branch_summary" &&
+    typeof entry.summary === "string"
+  ) {
+    return [
+      {
+        role: "branchSummary",
+        summary: entry.summary,
+        fromId: entry.fromId,
+        ...(entry.timestamp === undefined
+          ? {}
+          : { timestamp: entry.timestamp })
+      }
+    ];
+  }
+  if (
+    entry.type === "compaction" &&
+    typeof entry.summary === "string"
+  ) {
+    return [
+      {
+        role: "compactionSummary",
+        summary: entry.summary,
+        tokensBefore: entry.tokensBefore,
+        ...(entry.timestamp === undefined
+          ? {}
+          : { timestamp: entry.timestamp })
+      }
+    ];
+  }
+  return [];
 }
 
 const MAX_TREE_NODES = 2_000;
@@ -189,13 +313,15 @@ function summarizeEntry(entry: SessionEntry): string {
     const content =
       typeof message.content === "string"
         ? message.content
-        : message.content
-            .flatMap((block) =>
-              block.type === "text" && typeof block.text === "string"
-                ? [block.text]
-                : []
-            )
-            .join(" ");
+        : Array.isArray(message.content)
+          ? message.content
+              .flatMap((block) =>
+                block.type === "text" && typeof block.text === "string"
+                  ? [block.text]
+                  : []
+              )
+              .join(" ")
+          : "";
     return compactSummary(content || `${message.role} message`);
   }
   const record = entry as Record<string, unknown>;
@@ -219,25 +345,35 @@ function aggregateUsage(entries: SessionEntry[]): UsageSummary {
   let reportedCost = 0;
   let costReported = false;
   let toolCalls = 0;
-  for (const entry of entries) {
-    if (entry.type !== "message" || !entry.message) continue;
-    const message = entry.message;
-    if (Array.isArray(message.content)) {
-      toolCalls += message.content.filter((block) =>
-        ["toolCall", "tool_call"].includes(block.type)
-      ).length;
-    }
-    const usage = asRecord(message.usage);
-    inputTokens += numberValue(usage.input) + numberValue(usage.inputTokens);
-    outputTokens += numberValue(usage.output) + numberValue(usage.outputTokens);
-    cachedTokens +=
-      numberValue(usage.cacheRead) +
-      numberValue(usage.cache_read) +
-      numberValue(usage.cachedTokens);
+  function addUsage(value: unknown) {
+    const usage = asRecord(value);
+    inputTokens += firstNumber(usage.input, usage.inputTokens);
+    outputTokens += firstNumber(usage.output, usage.outputTokens);
+    cachedTokens += firstNumber(
+      usage.cacheRead,
+      usage.cache_read,
+      usage.cachedTokens
+    );
     const cost = asRecord(usage.cost);
-    if (typeof cost.total === "number") {
+    if (typeof cost.total === "number" && Number.isFinite(cost.total)) {
       reportedCost += cost.total;
       costReported = true;
+    }
+  }
+  for (const entry of entries) {
+    if (entry.type === "message" && entry.message) {
+      const message = entry.message;
+      if (Array.isArray(message.content)) {
+        toolCalls += message.content.filter((block) =>
+          ["toolCall", "tool_call"].includes(block.type)
+        ).length;
+      }
+      addUsage(message.usage);
+    } else if (
+      entry.type === "compaction" ||
+      entry.type === "branch_summary"
+    ) {
+      addUsage(entry.usage);
     }
   }
   return {
@@ -257,18 +393,49 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function firstNumber(...values: unknown[]): number {
+  const value = values.find(
+    (candidate) =>
+      typeof candidate === "number" && Number.isFinite(candidate)
+  );
+  return typeof value === "number" ? value : 0;
 }
 
-function encodeCursor(offset: number): string {
-  return Buffer.from(String(offset)).toString("base64url");
+function encodeCursor(signature: string, offset: number): string {
+  return Buffer.from(
+    JSON.stringify({ signature, offset }),
+    "utf8"
+  ).toString("base64url");
 }
 
-function decodeCursor(cursor: string | null | undefined): number | null {
+function decodeCursor(
+  cursor: string | null | undefined,
+  signature: string
+): number | null {
   if (!cursor) return null;
-  const value = Number(Buffer.from(cursor, "base64url").toString("utf8"));
-  return Number.isInteger(value) && value >= 0 ? value : null;
+  if (cursor.length > 512 || !/^[A-Za-z0-9_-]+$/.test(cursor)) {
+    throw new PiSessionCursorError("Invalid Pi session history cursor");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+  } catch {
+    throw new PiSessionCursorError("Invalid Pi session history cursor");
+  }
+  const record = asRecord(value);
+  if (
+    typeof record.signature !== "string" ||
+    !Number.isSafeInteger(record.offset) ||
+    (record.offset as number) < 0
+  ) {
+    throw new PiSessionCursorError("Invalid Pi session history cursor");
+  }
+  if (record.signature !== signature) {
+    throw new PiSessionCursorError(
+      "Pi session changed; refresh before loading more history"
+    );
+  }
+  return record.offset as number;
 }
 
 export function clearSessionCache(file?: string): void {

@@ -3,14 +3,13 @@ import {
   Bot,
   CalendarClock,
   Command,
-  LayoutDashboard,
   LogOut,
   Menu,
   MessageSquarePlus,
   Settings,
   X
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   NavLink,
   Navigate,
@@ -19,7 +18,13 @@ import {
   useLocation
 } from "./router";
 import { useAuth } from "./auth";
-import { Button, ErrorBanner, IconButton, Loading } from "./components";
+import {
+  Button,
+  ButtonLink,
+  ErrorBanner,
+  IconButton,
+  Loading
+} from "./components";
 import { CommandPalette } from "./CommandPalette";
 import { LoginPage } from "./pages/LoginPage";
 import { useUnreadSessions } from "./useUnreadSessions";
@@ -60,13 +65,11 @@ const SettingsPage = lazy(() =>
   }))
 );
 
-const navigation = [
+const primaryNavigation = [
   { to: "/", label: "新会话", icon: MessageSquarePlus, end: true },
-  { to: "/dashboard", label: "总览", icon: LayoutDashboard, end: true },
   { to: "/sessions", label: "会话", icon: Activity },
   { to: "/schedules", label: "调度", icon: CalendarClock },
-  { to: "/pi", label: "Pi 管理", icon: Bot },
-  { to: "/settings", label: "设置", icon: Settings }
+  { to: "/pi", label: "Pi 管理", icon: Bot }
 ];
 
 export function App() {
@@ -121,10 +124,56 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const [commandOpen, setCommandOpen] = useState(false);
   const { logout } = useAuth();
   const location = useLocation();
+  const pageRef = useRef<HTMLElement>(null);
+  const previousPath = useRef(location.pathname);
   const workbenchRoute =
-    location.pathname === "/" || /^\/sessions\/[^/]+$/.test(location.pathname);
+    location.pathname === "/" ||
+    location.pathname === "/sessions" ||
+    /^\/sessions\/[^/]+$/.test(location.pathname);
+  const sessionDetailRoute = /^\/sessions\/[^/]+$/.test(location.pathname);
   const unreadSessions = useUnreadSessions();
-  useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => {
+    setOpen(false);
+    const changed = previousPath.current !== location.pathname;
+    previousPath.current = location.pathname;
+    if (!changed) return;
+
+    const page = pageRef.current;
+    if (!page) return;
+    page.scrollTop = 0;
+    if (location.pathname === "/") return;
+
+    let stopped = false;
+    let observer: MutationObserver | null = null;
+    const focusHeading = () => {
+      const heading = page.querySelector<HTMLElement>("h1");
+      if (!heading) return false;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+      return true;
+    };
+    if (!focusHeading()) {
+      observer = new MutationObserver(() => {
+        if (stopped || !focusHeading()) return;
+        observer?.disconnect();
+      });
+      observer.observe(page, { childList: true, subtree: true });
+    }
+    const timeout = window.setTimeout(() => observer?.disconnect(), 1500);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timeout);
+      observer?.disconnect();
+    };
+  }, [location.pathname]);
+  useEffect(() => {
+    if (!open) return;
+    function closeNavigation(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", closeNavigation);
+    return () => window.removeEventListener("keydown", closeNavigation);
+  }, [open]);
   useEffect(() => {
     function openCommandPalette(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -136,19 +185,32 @@ function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", openCommandPalette);
   }, []);
   useEffect(() => {
-    document.title =
-      unreadSessions.size > 0
-        ? `(${unreadSessions.size}) Pi Web`
-        : "Pi Web";
-  }, [unreadSessions]);
+    const unreadPrefix =
+      unreadSessions.size > 0 ? `(${unreadSessions.size}) ` : "";
+    document.title = `${unreadPrefix}${routeTitle(location.pathname)} · Pi Web`;
+  }, [location.pathname, unreadSessions]);
 
   return (
-    <div className={ui(`app-shell${workbenchRoute ? " app-shell-workbench" : ""}`)}>
+    <div
+      className={ui(
+        `app-shell${workbenchRoute ? " app-shell-workbench" : ""}${
+          sessionDetailRoute ? " app-shell-session-detail" : ""
+        }`
+      )}
+    >
       <aside className={ui(`sidebar ${open ? "sidebar-open" : ""}`)}>
         <div className={ui("sidebar-brand")}>
-          <div className={ui("brand-mark")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={ui("brand-mark command-trigger")}
+            aria-label={t("打开命令面板")}
+            title={`${t("打开命令面板")} (Ctrl/⌘+K)`}
+            onClick={() => setCommandOpen(true)}
+          >
             <Command size={21} />
-          </div>
+          </Button>
           <div>
             <strong>Pi Web</strong>
             <span>PRIVATE RUNTIME</span>
@@ -162,7 +224,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
         <nav className={ui("nav-list")} aria-label={t("主导航")}>
-          {navigation.map(({ to, label, icon: Icon, end }) => (
+          {primaryNavigation.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -175,16 +237,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
               <span>{t(label)}</span>
             </NavLink>
           ))}
-          <button
-            type="button"
-            className={ui("nav-link command-trigger")}
-            aria-label={t("打开命令面板")}
-            title={`${t("打开命令面板")} (Ctrl/⌘+K)`}
-            onClick={() => setCommandOpen(true)}
-          >
-            <Command size={18} />
-            <span>{t("命令")}</span>
-          </button>
         </nav>
         <div className={ui("sidebar-foot")}>
           <div className={ui("runtime-chip")}>
@@ -194,6 +246,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
               <small>{t("独立运行中")}</small>
             </div>
           </div>
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              ui(isActive ? "nav-link active" : "nav-link")
+            }
+            aria-label={t("设置")}
+            title={t("设置")}
+          >
+            <Settings size={18} />
+            <span>{t("设置")}</span>
+          </NavLink>
           <Button className={ui("nav-link logout")} variant="ghost" tooltip={t("退出登录")} aria-label={t("退出登录")} onClick={() => void logout()}>
             <LogOut size={18} />
             <span>{t("退出登录")}</span>
@@ -207,15 +270,30 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <Menu size={22} />
           </IconButton>
           <span className={ui("mobile-title")}>Pi Web</span>
-          <IconButton
-            label={t("打开命令面板")}
-            tooltip={t("打开命令面板")}
-            onClick={() => setCommandOpen(true)}
-          >
-            <Command size={19} />
-          </IconButton>
+          <div className={ui("mobile-header-actions")}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={ui("mobile-command-trigger")}
+              aria-label={t("打开命令面板")}
+              title={t("打开命令面板")}
+              onClick={() => setCommandOpen(true)}
+            >
+              <Command size={18} />
+            </Button>
+            <ButtonLink
+              to="/settings"
+              variant="ghost"
+              size="icon"
+              aria-label={t("设置")}
+              title={t("设置")}
+            >
+              <Settings size={19} />
+            </ButtonLink>
+          </div>
         </header>
-        <main className={ui("page")}>{children}</main>
+        <main ref={pageRef} className={ui("page")}>{children}</main>
       </div>
       <CommandPalette
         open={commandOpen}
@@ -223,4 +301,15 @@ function AppShell({ children }: { children: React.ReactNode }) {
       />
     </div>
   );
+}
+
+function routeTitle(pathname: string): string {
+  if (pathname === "/") return t("新会话");
+  if (pathname === "/dashboard") return t("总览");
+  if (pathname === "/sessions") return t("会话");
+  if (/^\/sessions\/[^/]+$/.test(pathname)) return t("会话");
+  if (pathname === "/schedules") return t("调度");
+  if (pathname === "/pi") return t("Pi 管理");
+  if (pathname === "/settings") return t("设置");
+  return "Pi Web";
 }

@@ -4,4 +4,5 @@ export * from "./scheduler.js";
 export * from "./cron.js";
 export * from "./pi-manager.js";
 export * from "./ipc-server.js";
+export * from "./owner-lease.js";
 export { runSessiond } from "./main.js";

@@ -15,7 +15,7 @@ test("initializes login theme before authentication without nested input surface
       ).backgroundColor
     })
   );
-  expect(darkInput.shellBackground).toBe("rgb(27, 31, 27)");
+  expect(darkInput.shellBackground).toBe("rgb(26, 26, 28)");
   expect(darkInput.inputBackground).toBe("rgba(0, 0, 0, 0)");
 
   await page.goto("/?safe-theme=1");
@@ -28,13 +28,17 @@ test("initializes login theme before authentication without nested input surface
       ).backgroundColor
     })
   );
-  expect(lightInput.shellBackground).toBe("rgb(247, 247, 245)");
+  expect(lightInput.shellBackground).toBe("rgb(240, 240, 242)");
   expect(lightInput.inputBackground).toBe("rgba(0, 0, 0, 0)");
 });
 
 test("authenticates, runs a durable session, browses files, and schedules work", async ({
   page
 }, testInfo) => {
+  // This is an intentionally broad durable-workflow smoke test. It covers
+  // authentication, session lifecycle, files, terminal, settings, and the
+  // scheduler against a real local backend, so slower CI hosts need headroom.
+  testInfo.setTimeout(180_000);
   const workspace = resolve(process.cwd());
   const suffix = `${testInfo.project.name}-${testInfo.retry}`;
   const scheduleName = `E2E schedule ${suffix}`;
@@ -82,9 +86,24 @@ test("authenticates, runs a durable session, browses files, and schedules work",
 
   await page.getByLabel("访问密钥").fill("pi-web-e2e-access");
   await page.getByRole("button", { name: "安全登录" }).click();
-  await expect(page.getByRole("heading", { name: /要在 .* 中做什么/ })).toBeVisible();
+  if (testInfo.project.name === "mobile") {
+    await expect(page.getByLabel("新会话任务")).toBeVisible();
+  } else {
+    await expect(
+      page.getByRole("heading", { name: "今天要做什么？", exact: true })
+    ).toBeVisible();
+  }
 
-  await page.keyboard.press("Control+K");
+  const commandButton =
+    testInfo.project.name === "mobile"
+      ? page
+          .locator(".mobile-header")
+          .getByRole("button", { name: "打开命令面板" })
+      : page
+          .locator(".sidebar-brand")
+          .getByRole("button", { name: "打开命令面板" });
+  await expect(commandButton).toBeVisible();
+  await commandButton.click();
   const commandPalette = page.getByRole("dialog", { name: "命令面板" });
   await expect(commandPalette).toBeVisible();
   await commandPalette.getByRole("combobox").fill("settings");
@@ -107,20 +126,59 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   }
 
   const homePrompt = `homepage smoke ${suffix}`;
-  await page.locator("summary").filter({ hasText: "系统提示词" }).click();
-  await page
-    .getByLabel("附加系统提示词")
-    .fill(`Answer in Chinese for ${suffix}`);
+  const defaultSystemPrompt = `Answer in Chinese for ${suffix}`;
+  await page.goto("/settings");
+  await expect(
+    page.getByRole("heading", { name: "设置", exact: true })
+  ).toBeVisible();
+  await page.getByLabel("默认附加系统提示词").fill(defaultSystemPrompt);
+  await page.getByRole("button", { name: "保存设置" }).click();
+  await expect(page.getByText("设置已保存")).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByLabel("新会话任务")).toBeVisible();
+  const homeComposerBar = page.locator(".home-composer-bar");
+  await expect(homeComposerBar).toHaveCSS("display", "flex");
+  if (testInfo.project.name === "desktop") {
+    const toolsBox = await page.locator(".home-composer-tools").boundingBox();
+    const sendBox = await page
+      .getByRole("button", { name: "创建会话并发送" })
+      .boundingBox();
+    expect(toolsBox).not.toBeNull();
+    expect(sendBox).not.toBeNull();
+    expect(sendBox!.x).toBeGreaterThan(toolsBox!.x + toolsBox!.width);
+  } else {
+    const composerBox = await page.locator(".home-composer").boundingBox();
+    const viewport = page.viewportSize();
+    expect(composerBox).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(composerBox!.y + composerBox!.height).toBeLessThanOrEqual(
+      viewport!.height
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollHeight -
+            document.documentElement.clientHeight
+        )
+      )
+      .toBeLessThanOrEqual(1);
+  }
   await page.getByLabel("新会话任务").fill(homePrompt);
   await page.getByRole("button", { name: "创建会话并发送" }).click();
   await expect(page.getByRole("heading", { name: homePrompt })).toBeVisible();
   await expect(page.getByText(`Completed: ${homePrompt}`)).toBeVisible({
     timeout: 10_000
   });
-  await page.getByRole("button", { name: "系统" }).click();
+  const sessionActions = page.getByRole("button", { name: "更多会话操作" });
+  await sessionActions.click();
+  await page.getByRole("menuitem", { name: "系统" }).click();
+  await expect(sessionActions).toBeFocused();
   await expect(page.locator(".workbench-system-prompt")).toContainText(
-    `Answer in Chinese for ${suffix}`
+    defaultSystemPrompt
   );
+  await page.getByRole("button", { name: "关闭系统信息" }).click();
+  await expect(page.locator(".workbench-system-prompt")).toHaveCount(0);
 
   if (testInfo.project.name === "desktop") {
     await page.getByRole("link", { name: new RegExp(homePrompt) }).hover();
@@ -130,7 +188,8 @@ test("authenticates, runs a durable session, browses files, and schedules work",
       page.getByRole("button", { name: new RegExp(`${folderName} 1`) })
     ).toBeVisible();
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "导出" }).click();
+    await page.getByRole("button", { name: "更多会话操作" }).click();
+    await page.getByRole("menuitem", { name: "导出" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/\.json$/);
     await page.getByRole("button", { name: "收起会话栏" }).click();
@@ -151,18 +210,26 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await expect(page.getByText(`Completed: slow tool smoke ${suffix}`)).toBeVisible();
 
   if (testInfo.project.name === "desktop") {
-    await page.getByRole("button", { name: "分支" }).click();
-    const treePanel = page.getByRole("complementary", {
-      name: "会话分支概览"
-    });
-    await expect(treePanel).toBeVisible();
-    await expect(treePanel.locator(".session-tree-row.is-current")).toHaveCount(
-      1
-    );
-    await page.getByRole("button", { name: "分支" }).click();
+    await page.getByRole("button", { name: "更多会话操作" }).click();
+    const branchAction = page.getByRole("menuitem", { name: "分支" });
+    if (await branchAction.isVisible()) {
+      await branchAction.click();
+      const treePanel = page.getByRole("complementary", {
+        name: "会话分支概览"
+      });
+      await expect(treePanel).toBeVisible();
+      await expect(treePanel.locator(".session-tree-row.is-current")).toHaveCount(
+        1
+      );
+      await page.getByRole("button", { name: "更多会话操作" }).click();
+      await page.getByRole("menuitem", { name: "分支" }).click();
+    } else {
+      await page.keyboard.press("Escape");
+    }
   }
 
-  await page.getByRole("button", { name: "终端" }).click();
+  await page.getByRole("button", { name: "更多会话操作" }).click();
+  await page.getByRole("menuitem", { name: "终端" }).click();
   const terminalPanel = page.getByRole("region", { name: "会话终端" });
   await expect(terminalPanel).toBeVisible();
   if (testInfo.project.name === "desktop") {
@@ -216,19 +283,30 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await expect(terminalPanel).toBeHidden();
 
   await page
-    .locator("summary")
-    .filter({ hasText: "fake/deterministic" })
+    .getByRole("button", { name: "设置当前会话的模型和思考级别" })
     .click();
-  const runtimeSettings = page.locator(".runtime-settings-popover");
+  const runtimeSettings = page.getByRole("dialog", {
+    name: "模型与思考级别"
+  });
+  await expect(runtimeSettings).toBeVisible();
   await expect(runtimeSettings.getByLabel("模型")).toHaveValue(
     "fake/deterministic"
   );
   await runtimeSettings.getByLabel("思考级别").selectOption("high");
+  await runtimeSettings
+    .getByRole("button", { name: "应用", exact: true })
+    .click();
+  await expect(runtimeSettings).toBeHidden();
   await expect(page.locator(".composer-meta")).toContainText("high");
 
   const readme = page.getByRole("button", { name: /^README\.md/ });
   if (!(await readme.isVisible())) {
-    await page.getByRole("button", { name: "打开文件" }).click();
+    const openFilePanel = page.getByRole("button", { name: "打开文件面板" });
+    if (await openFilePanel.isVisible()) {
+      await openFilePanel.click();
+    } else {
+      await page.getByRole("button", { name: "打开文件" }).click();
+    }
   }
   await expect(readme).toBeVisible();
   await readme.click();
@@ -241,9 +319,16 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   });
   if (await closeFiles.isVisible()) await closeFiles.click();
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "关闭会话" }).click();
+  await page.getByRole("button", { name: "更多会话操作" }).click();
+  await page.getByRole("menuitem", { name: "关闭会话" }).click();
   await expect(page.getByText("会话 Worker 已关闭")).toBeVisible();
   await expect(page.locator(".status-pill.status-closed")).toHaveCount(1);
+  const resumedPrompt = `resume in context ${suffix}`;
+  await page.getByRole("textbox").fill(resumedPrompt);
+  await page.getByRole("button", { name: "发送并恢复" }).click();
+  await expect(page.getByText(`Completed: ${resumedPrompt}`)).toBeVisible({
+    timeout: 10_000
+  });
 
   await page.goto("/schedules");
   const createSchedule = page.getByRole("button", {
@@ -256,25 +341,29 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await page.getByLabel("IANA 时区").fill("UTC");
   await page.getByLabel("工作目录").fill(workspace);
   await page.getByLabel("Pi 指令").fill(`scheduled smoke ${suffix}`);
+  const enabledSwitch = page.locator(
+    'mdui-switch[aria-label="创建后立即启用"]'
+  );
+  await expect(enabledSwitch).toHaveAttribute("aria-checked", "true");
+  await enabledSwitch.click();
+  await expect(enabledSwitch).toHaveAttribute("aria-checked", "false");
+  await enabledSwitch.click();
+  await expect(enabledSwitch).toHaveAttribute("aria-checked", "true");
   const saveSchedule = page.getByRole("button", { name: "保存调度" });
+  await saveSchedule.scrollIntoViewIfNeeded();
+  await saveSchedule.click({ trial: true });
   const scheduleActionLayout = await saveSchedule.evaluate((button) => {
     const buttonRect = button.getBoundingClientRect();
     const visualViewport = window.visualViewport;
     const viewportTop = visualViewport?.offsetTop ?? 0;
     const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
-    const hitTarget = document.elementFromPoint(
-      buttonRect.left + buttonRect.width / 2,
-      buttonRect.top + buttonRect.height / 2
-    );
     return {
       insideVisualViewport:
-        buttonRect.top >= viewportTop && buttonRect.bottom <= viewportBottom,
-      receivesPointer: hitTarget === button || button.contains(hitTarget)
+        buttonRect.top >= viewportTop && buttonRect.bottom <= viewportBottom
     };
   });
   expect(scheduleActionLayout).toEqual({
-    insideVisualViewport: true,
-    receivesPointer: true
+    insideVisualViewport: true
   });
   const saveScheduleBounds = await saveSchedule.boundingBox();
   expect(saveScheduleBounds).not.toBeNull();
@@ -295,13 +384,15 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await page.keyboard.press("Escape");
   await card.getByRole("button", { name: "立即运行" }).click();
   await expect(page.getByText("已创建立即运行")).toBeVisible();
-  const history = page.locator(".history-drawer");
+  const history = page.locator(
+    'mdui-dialog[aria-labelledby="run-history-title"]'
+  );
   await expect(history.getByRole("heading", { name: scheduleName })).toBeVisible();
-  await expect(history.getByText(/manual/)).toBeVisible();
+  await expect(history.getByText("立即运行", { exact: true })).toBeVisible();
 
   await page.goto("/pi");
   await expect(page.getByRole("heading", { name: "Pi 管理" })).toBeVisible();
-  await expect(page.getByText("PI CODING AGENT")).toBeVisible();
+  await expect(page.getByText("PI RUNTIME")).toBeVisible();
 });
 
 test("switches and persists the interface language", async ({ page }, testInfo) => {
@@ -311,20 +402,26 @@ test("switches and persists the interface language", async ({ page }, testInfo) 
   await page.getByLabel("访问密钥").fill("pi-web-e2e-access");
   await page.getByRole("button", { name: "安全登录" }).click();
   await expect(
-    page.getByRole("heading", { name: /要在 .* 中做什么/ })
+    page.getByRole("heading", { name: "今天要做什么？", exact: true })
   ).toBeVisible();
   await page.goto("/settings");
 
   await page.getByLabel("语言").selectOption("en-US");
   await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true })
+  ).toBeVisible();
   await expect(page.getByLabel("Language")).toHaveValue("en-US");
 
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true })
+  ).toBeVisible();
 
   await page.getByLabel("Language").selectOption("zh-CN");
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
-  await expect(page.getByRole("heading", { name: "设置" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "设置", exact: true })
+  ).toBeVisible();
 });

@@ -114,13 +114,58 @@ export interface PiContentBlock {
 
 export interface PiMessage {
   role: string;
-  content: string | PiContentBlock[];
+  content?: string | PiContentBlock[];
+  summary?: string;
   provider?: string;
   model?: string;
   usage?: Record<string, unknown>;
   stopReason?: string;
-  timestamp?: string;
+  timestamp?: string | number;
   [key: string]: unknown;
+}
+
+/**
+ * Project only visible assistant text from Pi's streaming event shape.
+ * Thinking and tool-call argument deltas are deliberately not conversation
+ * text and must not leak into the live answer projection.
+ */
+export function extractPiTextDelta(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const record = value as Record<string, unknown>;
+  if ("assistantMessageEvent" in record) {
+    const streamEvent =
+      record.assistantMessageEvent &&
+      typeof record.assistantMessageEvent === "object" &&
+      !Array.isArray(record.assistantMessageEvent)
+        ? (record.assistantMessageEvent as Record<string, unknown>)
+        : {};
+    return streamEvent.type === "text_delta" &&
+      typeof streamEvent.delta === "string"
+      ? streamEvent.delta
+      : "";
+  }
+  if (record.type === "text_delta" && typeof record.delta === "string") {
+    return record.delta;
+  }
+  if (
+    typeof record.type === "string" &&
+    record.type.endsWith("_delta")
+  ) {
+    return "";
+  }
+  if (typeof record.text === "string") return record.text;
+  if (typeof record.contentDelta === "string") return record.contentDelta;
+  if (typeof record.delta === "string") return record.delta;
+  if (
+    record.delta &&
+    typeof record.delta === "object" &&
+    !Array.isArray(record.delta) &&
+    typeof (record.delta as Record<string, unknown>).text === "string"
+  ) {
+    return (record.delta as Record<string, unknown>).text as string;
+  }
+  return "";
 }
 
 export interface QueuedMessages {
@@ -147,8 +192,13 @@ export interface SessionTreeSnapshot {
 export interface SessionSnapshot {
   session: SessionRecord;
   messages: PiMessage[];
-  entries: unknown[];
+  /** Unmodified Pi `get_state` projection for an active worker. */
   state: Record<string, unknown> | null;
+  /** Unmodified Pi `get_session_stats` projection when supported. */
+  sessionStats: Record<string, unknown> | null;
+  /** Bounded Sessiond-only transient activity for reconnect rendering. */
+  recentToolEvents: RealtimeEvent[];
+  liveText: string;
   queuedMessages: QueuedMessages;
   tree: SessionTreeSnapshot | null;
   sequence: number;
@@ -212,6 +262,56 @@ export interface DashboardSummary {
   recentProblems: SessionRecord[];
 }
 
+export interface PiModelSummary {
+  provider: string;
+  id: string;
+  label: string;
+}
+
+export interface PiStatus {
+  available: boolean;
+  executable: string;
+  version: string | null;
+  models: PiModelSummary[];
+  packages: string[];
+  errors: string[];
+}
+
+export const authRotateSchema = z
+  .object({
+    hash: z
+      .object({
+        algorithm: z.literal("scrypt"),
+        salt: z.string().min(1).max(512),
+        hash: z.string().min(1).max(512)
+      })
+      .strict(),
+    auditType: z.enum(["access_key.reset", "access_key.set"]),
+    actor: z.enum(["web", "cli"])
+  })
+  .strict();
+export type AuthRotateInput = z.infer<typeof authRotateSchema>;
+
+export interface AuthRotateResult {
+  updated: true;
+}
+
+export interface PiDoctorProbe {
+  available: boolean;
+  version: string | null;
+  rpcStartable: boolean;
+  packageCommands: boolean;
+  errors: string[];
+}
+
+export interface SessiondDoctorResult {
+  database: boolean;
+  socket: string;
+  scheduler: boolean;
+  activeWorkers: number;
+  pi: PiDoctorProbe;
+}
+
 export interface InternalRequest {
   kind: "request";
   id: string;
@@ -231,6 +331,7 @@ export interface InternalResponse {
   error?: {
     code: string;
     message: string;
+    statusCode: number;
     details?: unknown;
   };
 }
@@ -291,16 +392,18 @@ function requirePromptContent(
   }
 }
 
+const mutationIdSchema = z.string().uuid();
+
 export const createSessionSchema = z
   .object({
+    mutationId: mutationIdSchema.optional(),
     cwd: z.string().min(1).max(4096),
     displayName: z.string().trim().min(1).max(160),
     prompt: z.string().max(200_000).optional(),
     images: promptImagesSchema,
     model: z.string().max(300).nullable().optional(),
     thinkingLevel: z.enum(thinkingLevels).nullable().optional(),
-    systemPrompt: z.string().max(100_000).nullable().optional(),
-    resumeSessionId: z.string().uuid().optional()
+    systemPrompt: z.string().max(100_000).nullable().optional()
   })
   .superRefine((value, context) => {
     if (value.prompt !== undefined || value.images.length > 0) {
@@ -317,6 +420,7 @@ export const sessionRenameSchema = z.object({
 
 export const promptSchema = z
   .object({
+    mutationId: mutationIdSchema.optional(),
     message: z.string().max(200_000).default(""),
     images: promptImagesSchema,
     behavior: z.enum(["prompt", "steer", "follow_up"]).default("prompt")
@@ -325,6 +429,7 @@ export const promptSchema = z
 
 export const resumeSessionSchema = z
   .object({
+    mutationId: mutationIdSchema.optional(),
     prompt: z.string().max(200_000).optional(),
     images: promptImagesSchema
   })
@@ -359,7 +464,6 @@ export const settingsUpdateSchema = z.object({
   minimumCronIntervalMinutes: z.number().int().min(1).max(1440).optional(),
   modelSchedulePolicy: z.enum(["allow", "create_disabled", "deny"]).optional(),
   piExecutable: z.string().min(1).max(4096).optional(),
-  trustedProxy: z.boolean().optional(),
   cookieSecure: z.enum(["auto", "always", "never"]).optional(),
   defaultModel: z.string().max(300).nullable().optional(),
   defaultThinkingLevel: z.enum(thinkingLevels).nullable().optional(),
@@ -428,6 +532,45 @@ export const themeManifestSchema = z.discriminatedUnion("schemaVersion", [
 ]);
 export type ThemeManifest = z.infer<typeof themeManifestSchema>;
 
+export const defaultThemeMaterialSettings = {
+  enabled: false,
+  colors: {
+    primary: "#54545B",
+    secondary: "#69656C",
+    tertiary: "#5D6765",
+    neutral: "#77777A"
+  },
+  presetId: "graphite"
+} as const;
+
+const themeSeedColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#[\da-f]{6}$/i)
+  .transform((value) => value.toUpperCase());
+
+export const themeMaterialSettingsSchema = z
+  .object({
+    enabled: z.boolean().default(defaultThemeMaterialSettings.enabled),
+    colors: z
+      .object({
+        primary: themeSeedColorSchema,
+        secondary: themeSeedColorSchema,
+        tertiary: themeSeedColorSchema,
+        neutral: themeSeedColorSchema
+      })
+      .default({ ...defaultThemeMaterialSettings.colors }),
+    presetId: z.string().trim().min(1).max(64).nullable().default(
+      defaultThemeMaterialSettings.presetId
+    )
+  })
+  .default({
+    enabled: defaultThemeMaterialSettings.enabled,
+    colors: { ...defaultThemeMaterialSettings.colors },
+    presetId: defaultThemeMaterialSettings.presetId
+  });
+export type ThemeMaterialSettings = z.infer<typeof themeMaterialSettingsSchema>;
+
 export const themePreferencesSchema = z.object({
   themeId: z.string().trim().min(1).max(64),
   colorMode: z.enum(["system", "light", "dark"]).default("system"),
@@ -447,7 +590,11 @@ export const themePreferencesSchema = z.object({
       position: "center",
       overlay: 0.18,
       blur: 0
-    })
+    }),
+  // Kept with the server-owned appearance document so all operator browsers
+  // resolve the same four MD3 seed roles. Older appearance files omit it and
+  // receive the neutral default through the schema above.
+  materialTheme: themeMaterialSettingsSchema
 });
 export type ThemePreferences = z.infer<typeof themePreferencesSchema>;
 

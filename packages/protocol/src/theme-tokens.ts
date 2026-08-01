@@ -19,7 +19,6 @@ export const themeTokenNames = [
   "--shadow",
   "--radius",
   "--radius-sm",
-  "--sidebar",
   "--font-ui",
   "--font-mono"
 ] as const;

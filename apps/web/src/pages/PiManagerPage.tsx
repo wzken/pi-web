@@ -2,17 +2,23 @@ import {
   AlertTriangle,
   Bot,
   Box,
-  Braces,
   CheckCircle2,
+  Cpu,
   Download,
-  FileCode2,
   Package,
   RefreshCcw,
-  Sparkles,
+  Terminal,
   Trash2,
   XCircle
 } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type KeyboardEvent
+} from "react";
+import type { PiStatus } from "@pi-web/protocol";
 import { api, isAbortError, jsonBody } from "../api";
 import {
   Button,
@@ -24,29 +30,13 @@ import {
 } from "../components";
 import { t } from "../i18n";
 import { ui } from "../ui";
+import styles from "./PiManagerPage.module.css";
 
-interface ResourceItem {
-  name: string;
-  path: string;
-  location: "user";
-}
-
-interface PiStatus {
-  available: boolean;
-  executable: string;
-  version: string | null;
-  models: Array<{ provider: string; id: string; label: string }>;
-  providers: Array<{ id: string; configured: boolean; modelCount: number }>;
-  packages: string[];
-  skills: ResourceItem[];
-  extensions: ResourceItem[];
-  templates: ResourceItem[];
-  errors: string[];
-}
+type ManagerTab = "models" | "packages";
 
 export function PiManagerPage() {
   const [status, setStatus] = useState<PiStatus | null>(null);
-  const [tab, setTab] = useState<"models" | "packages" | "resources">("models");
+  const [tab, setTab] = useState<ManagerTab>("models");
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,6 +52,7 @@ export function PiManagerPage() {
         }),
     []
   );
+
   useEffect(() => {
     const controller = new AbortController();
     void refresh(controller.signal);
@@ -96,22 +87,45 @@ export function PiManagerPage() {
     }
   }
 
-  if (error && !status) return <ErrorBanner error={error} />;
-  if (!status) return <Loading label={t("询问 Pi 当前能力")} />;
+  function moveTab(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const nextTab: ManagerTab =
+      event.key === "ArrowLeft" || event.key === "Home"
+        ? "models"
+        : "packages";
+    setTab(nextTab);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(
+          nextTab === "models" ? "pi-models-tab" : "pi-packages-tab"
+        )
+        ?.focus();
+    });
+  }
 
-  const resources = [
-    { label: "Skills", values: status.skills, icon: Sparkles },
-    { label: "Extensions", values: status.extensions, icon: Braces },
-    { label: "Prompt Templates", values: status.templates, icon: FileCode2 }
-  ];
+  if (error && !status) return <ErrorBanner error={error} />;
+  if (!status) return <Loading label={t("读取 Pi 状态")} />;
+
+  const providers = new Map<string, number>();
+  for (const model of status.models) {
+    providers.set(model.provider, (providers.get(model.provider) ?? 0) + 1);
+  }
+  const providerEntries = [...providers.entries()];
 
   return (
-    <>
-      <header className={ui("page-header")}>
+    <section className={ui(styles.page, "pi-manager-page")}>
+      <header className={styles.pageHeader}>
         <div>
-          <p className={ui("eyebrow")}>PI MANAGER</p>
+          <p className={styles.eyebrow}>PI RUNTIME</p>
           <h1>{t("Pi 管理")}</h1>
-          <p>{t("展示 Pi 自己发现的模型、Packages、Skills、Extensions 和模板。")}</p>
+          <p>
+            {t(
+              "展示 Pi CLI 返回的版本、可用模型和 Packages。会话能力由各 Pi Worker 按项目上下文加载。"
+            )}
+          </p>
         </div>
         <Button
           variant="secondary"
@@ -122,153 +136,321 @@ export function PiManagerPage() {
             void refresh().finally(() => setRefreshing(false));
           }}
         >
-          <RefreshCcw size={16} />
+          <RefreshCcw size={16} aria-hidden="true" />
           {t("刷新状态")}
         </Button>
       </header>
-      {error !== null && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
 
-      <section className={ui(`pi-runtime-banner ${status.available ? "available" : "missing"}`)}>
-        <div className={ui("pi-runtime-icon")}><Bot size={24} /></div>
-        <div>
-          <span>PI CODING AGENT</span>
-          <h2>{status.available ? status.version || t("版本未知") : t("未找到 Pi")}</h2>
-          <p>{status.executable}</p>
+      {error !== null && (
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
+      )}
+
+      <section
+        className={styles.runtimeCard}
+        data-available={String(status.available)}
+        aria-labelledby="pi-runtime-title"
+      >
+        <div className={styles.runtimeSummary}>
+          <div className={styles.runtimeIcon}>
+            <Terminal size={23} aria-hidden="true" />
+          </div>
+          <div className={styles.runtimeCopy}>
+            <div className={styles.runtimeState}>
+              {status.available ? (
+                <CheckCircle2 size={14} aria-hidden="true" />
+              ) : (
+                <XCircle size={14} aria-hidden="true" />
+              )}
+              {status.available ? t("可用") : t("不可用")}
+            </div>
+            <h2 id="pi-runtime-title">
+              {status.available
+                ? status.version || t("版本未知")
+                : t("未找到 Pi")}
+            </h2>
+            <code title={status.executable}>{status.executable}</code>
+          </div>
         </div>
-        <div className={ui("runtime-state")}>
-          {status.available ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
-          {status.available ? t("可用") : t("不可用")}
-        </div>
+        <dl className={styles.runtimeMetrics}>
+          <div>
+            <dt>
+              <Cpu size={15} aria-hidden="true" />
+              {t("模型")}
+            </dt>
+            <dd>{status.models.length}</dd>
+          </div>
+          <div>
+            <dt>
+              <Bot size={15} aria-hidden="true" />
+              Provider
+            </dt>
+            <dd>{providers.size}</dd>
+          </div>
+          <div>
+            <dt>
+              <Package size={15} aria-hidden="true" />
+              Packages
+            </dt>
+            <dd>{status.packages.length}</dd>
+          </div>
+        </dl>
       </section>
 
       {status.errors.length > 0 && (
-        <div className={ui("manager-errors")}>
-          <AlertTriangle size={18} />
+        <div className={styles.managerErrors} role="status">
+          <AlertTriangle size={18} aria-hidden="true" />
           <div>
             <strong>{t("部分 Pi 状态无法读取")}</strong>
-            {status.errors.map((item) => <span key={item}>{item}</span>)}
+            {status.errors.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
           </div>
         </div>
       )}
 
-      <div className={ui("tabs")} role="tablist" aria-label={t("Pi 管理类别")}>
-        <Button variant="toolbar" role="tab" aria-selected={tab === "models"} active={tab === "models"} onClick={() => setTab("models")}>{t("模型与 Provider")}</Button>
-        <Button variant="toolbar" role="tab" aria-selected={tab === "packages"} active={tab === "packages"} onClick={() => setTab("packages")}>Packages</Button>
-        <Button variant="toolbar" role="tab" aria-selected={tab === "resources"} active={tab === "resources"} onClick={() => setTab("resources")}>{t("能力资源")}</Button>
+      <div
+        className={styles.tabs}
+        role="tablist"
+        aria-label={t("Pi 管理类别")}
+        tabIndex={0}
+        onKeyDown={moveTab}
+      >
+        <Button
+          id="pi-models-tab"
+          variant="toolbar"
+          role="tab"
+          aria-controls="pi-models-panel"
+          aria-selected={tab === "models"}
+          tabIndex={tab === "models" ? 0 : -1}
+          active={tab === "models"}
+          onClick={() => setTab("models")}
+        >
+          {t("模型与 Provider")}
+        </Button>
+        <Button
+          id="pi-packages-tab"
+          variant="toolbar"
+          role="tab"
+          aria-controls="pi-packages-panel"
+          aria-selected={tab === "packages"}
+          tabIndex={tab === "packages" ? 0 : -1}
+          active={tab === "packages"}
+          onClick={() => setTab("packages")}
+        >
+          Packages
+        </Button>
       </div>
 
       {tab === "models" && (
-        <section className={ui("manager-grid")}>
-          <article className={ui("panel")}>
-            <div className={ui("panel-heading")}><div><p className={ui("eyebrow")}>PROVIDERS</p><h2>{t("已配置 Provider")}</h2></div></div>
-            {status.providers.length === 0 ? (
-              <p className={ui("panel-empty")}>{t("Pi 没有返回可用模型；请先在 Pi 中完成 Provider 登录或 API Key 配置。")}</p>
+        <section
+          id="pi-models-panel"
+          className={styles.managerGrid}
+          role="tabpanel"
+          aria-labelledby="pi-models-tab"
+          tabIndex={0}
+        >
+          <article className={styles.panel}>
+            <header className={styles.panelHeading}>
+              <div>
+                <span className={styles.panelIcon}>
+                  <Bot size={18} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className={styles.eyebrow}>PROVIDERS</p>
+                  <h2>{t("已配置 Provider")}</h2>
+                </div>
+              </div>
+              <span className={styles.countBadge}>{providers.size}</span>
+            </header>
+            {providerEntries.length === 0 ? (
+              <p className={styles.panelEmpty}>
+                {t(
+                  "Pi 没有返回可用模型；请先在 Pi 中完成 Provider 登录或 API Key 配置。"
+                )}
+              </p>
             ) : (
-              <div className={ui("provider-grid")}>
-                {status.providers.map((provider) => (
-                  <div className={ui("provider-card")} key={provider.id}>
-                    <div className={ui("provider-avatar")}>{provider.id.slice(0, 2).toUpperCase()}</div>
-                    <div><strong>{provider.id}</strong><span>{t("{{count}} 个模型", { count: provider.modelCount })}</span></div>
-                    <CheckCircle2 size={16} />
+              <div className={styles.providerList}>
+                {providerEntries.map(([provider, modelCount]) => (
+                  <div className={styles.providerRow} key={provider}>
+                    <div className={styles.providerAvatar}>
+                      {provider.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <strong>{provider}</strong>
+                      <span>
+                        {t("{{count}} 个模型", { count: modelCount })}
+                      </span>
+                    </div>
+                    <CheckCircle2 size={16} aria-hidden="true" />
                   </div>
                 ))}
               </div>
             )}
           </article>
-          <article className={ui("panel")}>
-            <div className={ui("panel-heading")}><div><p className={ui("eyebrow")}>MODELS</p><h2>{t("可用模型")}</h2></div><span>{status.models.length}</span></div>
-            <div className={ui("model-list")}>
-              {status.models.map((model) => (
-                <div key={`${model.provider}/${model.id}`}>
-                  <div className={ui("model-dot")} />
-                  <span>{model.id}</span>
-                  <small>{model.provider}</small>
+
+          <article className={styles.panel}>
+            <header className={styles.panelHeading}>
+              <div>
+                <span className={styles.panelIcon}>
+                  <Cpu size={18} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className={styles.eyebrow}>MODELS</p>
+                  <h2>{t("可用模型")}</h2>
                 </div>
-              ))}
-            </div>
+              </div>
+              <span className={styles.countBadge}>{status.models.length}</span>
+            </header>
+            {status.models.length === 0 ? (
+              <div className={styles.emptyPanel}>
+                <EmptyState
+                  icon={<Cpu size={24} />}
+                  title={t("可用模型")}
+                >
+                  {t(
+                    "Pi 没有返回可用模型；请先在 Pi 中完成 Provider 登录或 API Key 配置。"
+                  )}
+                </EmptyState>
+              </div>
+            ) : (
+              <div className={styles.modelList}>
+                {status.models.map((model) => (
+                  <div
+                    className={styles.modelRow}
+                    key={`${model.provider}/${model.id}`}
+                  >
+                    <span className={styles.modelDot} aria-hidden="true" />
+                    <div>
+                      <strong>{model.label || model.id}</strong>
+                      {model.label !== model.id && <code>{model.id}</code>}
+                    </div>
+                    <span className={styles.providerChip}>
+                      {model.provider}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </article>
         </section>
       )}
 
       {tab === "packages" && (
-        <section className={ui("packages-layout")}>
-          <article className={ui("panel package-install")}>
-            <p className={ui("eyebrow")}>INSTALL PACKAGE</p>
-            <h2>{t("安装 Pi Package")}</h2>
-            <div className={ui("package-warning")}>
-              <AlertTriangle size={17} />
-              <span>{t("Pi Package 可以执行代码并影响 Agent 行为，只安装你信任的来源。")}</span>
+        <section
+          id="pi-packages-panel"
+          className={styles.packagesLayout}
+          role="tabpanel"
+          aria-labelledby="pi-packages-tab"
+          tabIndex={0}
+        >
+          <article className={ui(styles.panel, styles.installPanel)}>
+            <header className={styles.panelHeading}>
+              <div>
+                <span className={styles.panelIcon}>
+                  <Download size={18} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className={styles.eyebrow}>INSTALL PACKAGE</p>
+                  <h2>{t("安装 Pi Package")}</h2>
+                </div>
+              </div>
+            </header>
+            <div className={styles.packageWarning}>
+              <AlertTriangle size={17} aria-hidden="true" />
+              <span>
+                {t(
+                  "Pi Package 可以执行代码并影响 Agent 行为，只安装你信任的来源。"
+                )}
+              </span>
             </div>
             <form
+              className={styles.installForm}
               onSubmit={(event: FormEvent) => {
                 event.preventDefault();
                 void packageAction("install", source);
               }}
             >
-              <label className={ui("field")}>
+              <label className={ui(styles.field, "field")}>
                 <span>{t("Package 来源")}</span>
                 <input
                   value={source}
                   onChange={(event) => setSource(event.target.value)}
                   placeholder="npm:@scope/package@version"
                 />
+                <small>
+                  {t("支持官方定义的 npm:、git:、URL 或绝对本地路径。")}
+                </small>
               </label>
-              <Button disabled={!source} loading={busy} loadingLabel={t("安装中…")}><Download size={16} />{t("安装")}</Button>
-            </form>
-            <small>{t("支持官方定义的 npm:、git:、URL 或绝对本地路径。")}</small>
-          </article>
-          <article className={ui("panel")}>
-            <div className={ui("panel-heading")}>
-              <div><p className={ui("eyebrow")}>INSTALLED</p><h2>{t("已安装 Packages")}</h2></div>
-              <Button variant="secondary" loading={busy} loadingLabel={t("更新中…")} onClick={() => void packageAction("update_all")}>
-                <RefreshCcw size={15} />{t("全部更新")}
+              <Button
+                type="submit"
+                disabled={!source.trim()}
+                loading={busy}
+                loadingLabel={t("安装中…")}
+              >
+                <Download size={16} aria-hidden="true" />
+                {t("安装")}
               </Button>
-            </div>
+            </form>
+          </article>
+
+          <article className={styles.panel}>
+            <header className={styles.panelHeading}>
+              <div>
+                <span className={styles.panelIcon}>
+                  <Package size={18} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className={styles.eyebrow}>INSTALLED</p>
+                  <h2>{t("已安装 Packages")}</h2>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                loading={busy}
+                loadingLabel={t("更新中…")}
+                onClick={() => void packageAction("update_all")}
+              >
+                <RefreshCcw size={15} aria-hidden="true" />
+                {t("全部更新")}
+              </Button>
+            </header>
             {status.packages.length === 0 ? (
-              <EmptyState icon={<Package size={24} />} title={t("没有已登记的 Package")}>{t("Pi 的 list 命令未返回任何 Package。")}</EmptyState>
+              <div className={styles.emptyPanel}>
+                <EmptyState
+                  icon={<Package size={24} />}
+                  title={t("没有已登记的 Package")}
+                >
+                  {t("Pi 的 list 命令未返回任何 Package。")}
+                </EmptyState>
+              </div>
             ) : (
-              <div className={ui("package-list")}>
+              <div className={styles.packageList}>
                 {status.packages.map((item) => (
-                  <div key={item}>
-                    <div className={ui("package-icon")}><Box size={17} /></div>
-                    <span>{item}</span>
-                    <IconButton label={t("移除 {{name}}", { name: item })} variant="danger" disabled={busy} onClick={() => void packageAction("remove", item)}>
+                  <div className={styles.packageRow} key={item}>
+                    <div className={styles.packageIcon}>
+                      <Box size={17} aria-hidden="true" />
+                    </div>
+                    <span title={item}>{item}</span>
+                    <IconButton
+                      label={t("移除 {{name}}", { name: item })}
+                      variant="danger"
+                      disabled={busy}
+                      onClick={() => void packageAction("remove", item)}
+                    >
                       <Trash2 size={15} />
                     </IconButton>
                   </div>
                 ))}
               </div>
             )}
-            <p className={ui("manager-note")}>{t("当前 Pi 只公开批量更新 Packages；运行中的 Worker 可能需要新建或重启会话才会加载变化。")}</p>
+            <p className={styles.managerNote}>
+              {t(
+                "当前 Pi 只公开批量更新 Packages；运行中的 Worker 可能需要新建或重启会话才会加载变化。"
+              )}
+            </p>
           </article>
         </section>
       )}
-
-      {tab === "resources" && (
-        <section className={ui("resource-columns")}>
-          {resources.map(({ label, values, icon: Icon }) => (
-            <article className={ui("panel")} key={label}>
-              <div className={ui("panel-heading")}>
-                <div><p className={ui("eyebrow")}>{label.toUpperCase()}</p><h2>{label}</h2></div>
-                <span>{values.length}</span>
-              </div>
-              <div className={ui("resource-list")}>
-                {values.length === 0 ? (
-                  <p className={ui("panel-empty")}>{t("未发现资源。")}</p>
-                ) : (
-                  values.map((resource) => (
-                    <div key={resource.path} title={resource.path}>
-                      <Icon size={15} />
-                      <span>{resource.name}</span>
-                      <small>{resource.location}</small>
-                    </div>
-                  ))
-                )}
-              </div>
-            </article>
-          ))}
-        </section>
-      )}
-    </>
+    </section>
   );
 }

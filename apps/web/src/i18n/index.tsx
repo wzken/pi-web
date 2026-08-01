@@ -49,8 +49,24 @@ const englishMessages: Record<string, string> = {
   "载入页面": "Loading page",
   "关闭导航": "Close navigation",
   "主导航": "Main navigation",
-  "打开命令面板": "Open command palette",
   "命令": "Commands",
+  "预览": "Preview",
+  "实时预览": "Live preview",
+  "主题包": "Theme pack",
+  "载入中": "Loading",
+  "已安装主题": "Installed theme",
+  "显示模式": "Display mode",
+  "主要操作": "Primary action",
+  "任务": "Tasks",
+  "新任务": "New task",
+  "开始任务": "Start task",
+  "测试": "Tests",
+  "高": "High",
+  "需要处理": "Needs attention",
+  "当前任务": "Current task",
+  "已读取": "Read",
+  "关闭终端": "Close terminal",
+  "今天": "Today",
   "独立运行中": "Running independently",
   "退出登录": "Sign out",
   "打开导航": "Open navigation",
@@ -137,8 +153,8 @@ const englishMessages: Record<string, string> = {
   "仅在 Pi Web 位于后台时提醒；内容只显示会话名称。":
     "Alert only while Pi Web is in the background; notifications show only the session name.",
   "浏览器通知": "Browser notifications",
-  "会话完成或异常退出时发送系统通知。首次开启会请求浏览器权限。":
-    "Send a system notification when a session finishes or exits unexpectedly. Permission is requested on first use.",
+  "任务结束或会话异常退出时发送系统通知。首次开启会请求浏览器权限。":
+    "Send a system notification when a task settles or a session exits unexpectedly. Permission is requested on first use.",
   "完成提示音": "Completion sound",
   "使用浏览器本地生成的短提示音，不加载外部音频。":
     "Play a short sound generated locally by the browser without external audio.",
@@ -213,6 +229,10 @@ const englishMessages: Record<string, string> = {
   "全部会话": "All sessions",
   "工作区": "Workspace",
   "要在 {{workspace}} 中做什么？": "What should Pi do in {{workspace}}?",
+  "今天要做什么？": "What should Pi do today?",
+  "当前工作区：{{workspace}}": "Current workspace: {{workspace}}",
+  "选择一个工作目录开始": "Choose a workspace to begin",
+  "全部工作区": "All workspaces",
   "输入任务即创建会话；目录、模型和系统提示词会随会话保存。":
     "Sending a task creates a session; its directory, model, and system prompt are saved with it.",
   "描述任务，使用 @ 引用工作区文件，或添加附件…":
@@ -277,7 +297,7 @@ const englishMessages: Record<string, string> = {
   "无法读取图片 {{name}}": "Could not read image {{name}}",
   "Pi 默认模型": "Pi default model",
   "Pi 会话需要处理": "Pi session needs attention",
-  "Pi 会话已完成": "Pi session completed",
+  "Pi 已等待指令": "Pi is waiting for input",
   "选择工作目录并开始任务": "Choose a working directory and start a task",
   "打开总览": "Open overview",
   "查看运行状态和用量": "View runtime status and usage",
@@ -289,6 +309,7 @@ const englishMessages: Record<string, string> = {
   "管理模型和运行时": "Manage models and runtime",
   "打开设置": "Open settings",
   "调整界面与系统选项": "Adjust interface and system options",
+  "打开命令面板": "Open command palette",
   "命令面板": "Command palette",
   "搜索页面或最近会话…": "Search pages or recent sessions…",
   "没有匹配的页面或最近会话": "No matching pages or recent sessions",
@@ -296,26 +317,56 @@ const englishMessages: Record<string, string> = {
   "选择": "Select",
   "打开": "Open",
   "外观已应用": "Appearance applied",
-  "已安装 {{name}}": "Installed {{name}}",
-  "主题包已更新": "Theme package updated",
-  "背景图片已上传，点击“应用外观”生效":
-    "Background uploaded. Select Apply appearance to save it.",
-  "删除主题包“{{name}}”？主题文件将从服务器移除。":
-    "Delete theme package “{{name}}”? Its files will be removed from the server.",
-  "主题包已删除": "Theme package deleted",
-  "已移除上传的背景": "Uploaded background removed",
+  "外观": "Appearance",
+  "选择显示模式，并用四个关键颜色定义整个工作区。":
+    "Choose a display mode and define the workspace with four key colors.",
+  "任务默认值": "Task defaults",
+  "模型与行为": "Model and behavior",
+  "为每个新任务提供一致的模型、思考和指令默认值。":
+    "Provide consistent model, reasoning, and instruction defaults for each new task.",
+  "工作区与运行环境": "Workspace and runtime",
+  "约束任务可访问的位置，并指定 Pi 的默认运行方式。":
+    "Control task access and Pi runtime defaults.",
+  "偏好设置": "Preferences",
+  "仅影响当前浏览器中的语言和完成提醒。":
+    "Only affects language and completion alerts in this browser.",
+  "安全与诊断": "Security and diagnostics",
+  "不常用的调度、安全与系统维护选项。":
+    "Less frequently used scheduling, security, and maintenance options.",
+  "自定义颜色": "Custom colors",
+  "主色": "Primary",
+  "次要色": "Secondary",
+  "第三色": "Tertiary",
+  "中性色": "Neutral",
+  "品牌、主要操作与焦点": "Brand, primary actions, and focus",
+  "辅助操作与选中状态": "Supporting actions and selected states",
+  "强调、提示与高亮": "Accents, cues, and highlights",
+  "背景、表面与边框": "Backgrounds, surfaces, and outlines",
+  "选择{{name}}": "Choose {{name}}",
+  "{{name}}十六进制颜色": "{{name}} hex color",
+  "预设色彩盘": "Preset palettes",
+  "选择一组协调色彩，也可以再单独微调。":
+    "Choose coordinated colors, then fine-tune them individually.",
+  "薰衣草": "Lavender",
+  "柔和紫色层次，适合安静、低干扰的工作界面。":
+    "Soft violet layers for a calm, low-distraction workspace.",
+  "靛青": "Indigo",
+  "清晰稳重的蓝靛主色，保留柔和紫色辅助层次。":
+    "A clear, grounded indigo primary with soft violet supporting tones.",
+  "鼠尾草": "Sage",
+  "自然绿为主，辅以低饱和橄榄与木质色。":
+    "Natural green with muted olive and wood-toned supporting colors.",
+  "珊瑚": "Coral",
+  "温暖珊瑚主色，适合友好而不过分活跃的强调。":
+    "A warm coral primary for friendly emphasis without excess energy.",
+  "石墨灰": "Graphite",
+  "近中性的灰阶系统，只保留细微冷暖层次。":
+    "A near-neutral gray system with only subtle warm and cool variation.",
   "读取主题": "Loading themes",
-  "外观与主题包": "Appearance and theme packages",
-  "主题可覆盖设计 token、组件 CSS、字体和背景；内置 Agegr Light / Dark。":
-    "Themes can override design tokens, component CSS, fonts, and backgrounds; Agegr Light and Dark are built in.",
-  "声明式包，不执行脚本": "Declarative packages; scripts are not executed",
   "安全主题模式已开启": "Safe theme mode is active",
   "当前强制使用内置主题，并忽略主题 CSS 与背景。":
     "The built-in theme is forced and uploaded theme CSS and backgrounds are ignored.",
-  "退出安全模式": "Exit safe mode",
   "配色模式": "Color mode",
-  "双模式主题会在同一主题内切换；单模式主题不匹配时使用对应的内置 Agegr 配色。":
-    "Dual-mode themes switch within one theme. A mismatched single-mode theme falls back to the corresponding built-in Agegr scheme.",
   "自动": "Automatic",
   "当前{{scheme}}": "Currently {{scheme}}",
   "浅色": "Light",
@@ -323,27 +374,15 @@ const englishMessages: Record<string, string> = {
   "始终浅色": "Always light",
   "始终深色": "Always dark",
   "主题": "Theme",
-  "内置主题不可删除；上传同 ID 的 ZIP 可更新已安装主题。":
-    "Built-in themes cannot be deleted. Upload a ZIP with the same ID to update an installed theme.",
+  "主题包继续提供字体、圆角与组件细节；自定义四色仅覆盖颜色。":
+    "The theme package continues to provide typography, radii, and component details; the four custom colors only override color.",
+  "选择已安装主题": "Choose an installed theme",
   "安装中…": "Installing…",
-  "上传 ZIP 主题包": "Upload theme ZIP",
-  "删除中…": "Deleting…",
   "删除": "Delete",
-  "选择主题": "Choose theme",
-  "工作区背景": "Workspace background",
-  "背景位于界面底层；主题仍负责面板透明度和文字对比度。":
-    "The background sits behind the interface; the theme still controls panel opacity and text contrast.",
   "背景来源": "Background source",
-  "无背景图片": "No background image",
-  "主题包自带背景": "Theme-provided background",
-  "上传到本机": "Upload to this server",
   "图片 URL": "Image URL",
-  "上传中…": "Uploading…",
-  "更换图片": "Replace image",
   "上传图片": "Upload image",
   "移除图片": "Remove image",
-  "PNG / JPEG / WebP / GIF / AVIF，最大 8 MB":
-    "PNG / JPEG / WebP / GIF / AVIF, up to 8 MB",
   "填充方式": "Fit",
   "覆盖": "Cover",
   "完整显示": "Contain",
@@ -354,12 +393,64 @@ const englishMessages: Record<string, string> = {
   "底部": "Bottom",
   "左侧": "Left",
   "右侧": "Right",
-  "遮罩 {{value}}%": "Overlay {{value}}%",
-  "模糊 {{value}}px": "Blur {{value}}px",
   "背景预览": "Background preview",
-  "未设置背景": "No background",
-  "未选择主题": "No theme selected",
-  "上传主题": "Uploaded theme",
+  "背景图片": "Background image",
+  "使用本地图片或图片链接，并实时预览裁切与遮罩。":
+    "Use a local image or image URL and preview its crop and overlay live.",
+  "无背景": "None",
+  "本地图片": "Local image",
+  "图片链接": "Image URL",
+  "主题自带": "From theme",
+  "已上传背景图片": "Background image uploaded",
+  "尚未上传图片": "No image uploaded",
+  "支持 PNG、JPEG、WebP、GIF、AVIF，最大 8 MB。":
+    "Supports PNG, JPEG, WebP, GIF, and AVIF up to 8 MB.",
+  "替换图片": "Replace image",
+  "选择图片": "Choose image",
+  "移除": "Remove",
+  "仅保存 http/https 地址；取色由浏览器直连，不经过服务器代理。":
+    "Only the http/https URL is saved. Color extraction connects from your browser without a server proxy.",
+  "输入有效链接后显示预览": "Enter a valid URL to show a preview",
+  "选择图片后显示预览": "Choose an image to show a preview",
+  "对齐位置": "Alignment",
+  "遮罩": "Overlay",
+  "模糊": "Blur",
+  "从图片生成配色": "Generate colors from image",
+  "提取结果会填入下方四个颜色，不会覆盖主题包文件。":
+    "Extracted values fill the four colors below without changing theme-package files.",
+  "提取中…": "Extracting…",
+  "提取主题色": "Extract theme colors",
+  "重试取色": "Retry extraction",
+  "开启时四色覆盖主题包颜色；关闭后继续使用主题包原有配色。":
+    "When enabled, the four colors override the theme package. Disable it to use the package colors.",
+  "使用自定义颜色": "Use custom colors",
+  "当前优先使用下方四色": "The four colors below currently take priority",
+  "当前使用主题包配色": "Theme-package colors are currently active",
+  "背景图片已上传，可继续调整显示方式":
+    "Background uploaded. You can continue adjusting its presentation.",
+  "背景图片已移除": "Background image removed",
+  "已从背景提取四色，可继续单独微调":
+    "Four colors extracted from the background. You can fine-tune them individually.",
+  "请选择 PNG、JPEG、WebP、GIF 或 AVIF 图片。":
+    "Choose a PNG, JPEG, WebP, GIF, or AVIF image.",
+  "背景图片必须小于 8 MB。": "The background image must be smaller than 8 MB.",
+  "请输入有效的 http 或 https 图片链接。":
+    "Enter a valid http or https image URL.",
+  "请先选择并上传一张背景图片。":
+    "Choose and upload a background image first.",
+  "当前没有可用于取色的背景图片。":
+    "There is no background image available for color extraction.",
+  "当前浏览器无法分析图片颜色。":
+    "This browser cannot analyze image colors.",
+  "图片服务器未允许跨域取色；背景仍可使用，也可改用本地上传。":
+    "The image server does not allow cross-origin color extraction. You can still use the background or upload it locally.",
+  "图片加载超时，请检查链接后重试。":
+    "The image timed out. Check the URL and try again.",
+  "图片没有可读取的尺寸。": "The image has no readable dimensions.",
+  "无法读取远程图片；请确认链接可访问且图片服务器允许 CORS，或改用本地上传。":
+    "The remote image could not be read. Confirm that it is reachable and allows CORS, or upload it locally.",
+  "无法读取该图片，请换用受支持的图片格式。":
+    "The image could not be read. Try a supported image format.",
   "内置主题": "Built-in theme",
   "恢复默认": "Restore defaults",
   "应用中…": "Applying…",
@@ -398,16 +489,16 @@ const englishMessages: Record<string, string> = {
   "保存名称": "Save name",
   "重命名对话文件夹": "Rename conversation folder",
   "关闭重命名文件夹": "Close folder rename dialog",
-  "，有未读完成通知": ", has an unread completion alert",
+  "，有未读通知": ", has an unread notification",
   "会话操作 {{name}}": "Session actions: {{name}}",
   "移动到": "Move to",
   "Package 已安装；新会话会加载它":
     "Package installed; new sessions will load it",
   "Package 已移除": "Package removed",
   "Pi Packages 已更新": "Pi Packages updated",
-  "询问 Pi 当前能力": "Loading Pi capabilities",
-  "展示 Pi 自己发现的模型、Packages、Skills、Extensions 和模板。":
-    "Shows models, Packages, Skills, Extensions, and templates discovered by Pi.",
+  "读取 Pi 状态": "Loading Pi status",
+  "展示 Pi CLI 返回的版本、可用模型和 Packages。会话能力由各 Pi Worker 按项目上下文加载。":
+    "Shows the version, available models, and Packages returned by the Pi CLI. Each Pi worker loads session capabilities for its project context.",
   "刷新中…": "Refreshing…",
   "刷新状态": "Refresh status",
   "版本未知": "Version unknown",
@@ -417,7 +508,6 @@ const englishMessages: Record<string, string> = {
   "部分 Pi 状态无法读取": "Some Pi status could not be read",
   "Pi 管理类别": "Pi management categories",
   "模型与 Provider": "Models and providers",
-  "能力资源": "Capability resources",
   "已配置 Provider": "Configured providers",
   "Pi 没有返回可用模型；请先在 Pi 中完成 Provider 登录或 API Key 配置。":
     "Pi returned no available models. Complete provider login or API key setup in Pi first.",
@@ -439,7 +529,6 @@ const englishMessages: Record<string, string> = {
   "移除 {{name}}": "Remove {{name}}",
   "当前 Pi 只公开批量更新 Packages；运行中的 Worker 可能需要新建或重启会话才会加载变化。":
     "Pi currently exposes only bulk Package updates. Running workers may need a new or restarted session to load changes.",
-  "未发现资源。": "No resources found.",
   "调度已停用": "Schedule disabled",
   "调度已启用": "Schedule enabled",
   "已有运行，本次已按策略跳过":
@@ -499,6 +588,7 @@ const englishMessages: Record<string, string> = {
   "完成后排队": "Queue after completion",
   "立即引导": "Steer now",
   "发送下一条指令": "Send the next instruction",
+  "发送指令并恢复会话": "Send an instruction and resume the session",
   "Pi 正在启动": "Pi is starting",
   "正在停止当前任务": "Stopping the current task",
   "恢复会话后才能发送": "Resume the session before sending",
@@ -507,22 +597,34 @@ const englishMessages: Record<string, string> = {
   "安排当前任务完成后的下一步…":
     "Queue the next step after the current task…",
   "给 Pi 一条新指令…": "Give Pi a new instruction…",
+  "输入新指令，发送后恢复会话…":
+    "Enter a new instruction to resume the session…",
   "实时连接恢复后可发送，草稿会保留…":
     "Send after the realtime connection returns; the draft is preserved…",
   "停止当前任务": "Stop current task",
   "发送中…": "Sending…",
   "排队发送": "Queue message",
+  "发送并恢复": "Send and resume",
   "发送": "Send",
   "立即引导当前任务": "Steer the current task now",
   "当前任务完成后发送": "Send after the current task",
+  "发送新指令并恢复会话": "Send a new instruction and resume the session",
+  "无法打开会话": "Unable to open the session",
+  "返回会话列表": "Return to the session list",
+  "清除搜索": "Clear search",
   "默认思考": "Default thinking",
   "Enter 发送 · Shift+Enter 换行":
     "Enter to send · Shift+Enter for a new line",
+  "Enter 按当前模式发送 · Alt+Enter 完成后排队 · Shift+Enter 换行":
+    "Enter sends in the selected mode · Alt+Enter queues a follow-up · Shift+Enter adds a new line",
   "收起": "Collapse",
   "展开": "Expand",
+  "关闭任务侧栏": "Close task rail",
   "{{action}}会话栏（Ctrl+B）": "{{action}} session rail (Ctrl+B)",
   "导出": "Export",
   "系统": "System",
+  "会话系统信息": "Session system information",
+  "关闭系统信息": "Close system information",
   "分支": "Branches",
   "终端": "Terminal",
   "当前 Pi 未报告上下文占用": "Pi has not reported context usage",
@@ -545,7 +647,6 @@ const englishMessages: Record<string, string> = {
   "正在建立实时连接…": "Establishing realtime connection…",
   "载入终端": "Loading terminal",
   "点击背景缩回终端": "Tap the backdrop to collapse the terminal",
-  "打开文件": "Open files",
   "终端已停止": "Terminal stopped",
   "进程已退出，代码 {{code}}": "Process exited with code {{code}}",
   "终端连接尚未就绪": "Terminal connection is not ready",
@@ -619,6 +720,35 @@ const englishMessages: Record<string, string> = {
   "Pi 会话图片": "Pi session image",
   "正在执行": "Running",
   "应用模型": "Apply model",
+  "设置当前会话的模型和思考级别":
+    "Configure the current session model and reasoning level",
+  "模型与思考级别": "Model and reasoning",
+  "修改当前会话后续请求使用的运行参数。":
+    "Change the runtime parameters used by subsequent requests in this session.",
+  "关闭模型设置": "Close model settings",
+  "应用": "Apply",
+  "设置工作目录、模型、思考级别和附加提示词":
+    "Configure the working directory, model, reasoning level, and appended prompt",
+  "会话运行设置": "Session runtime settings",
+  "已附加提示词": "Prompt appended",
+  "这些选项只影响即将创建的会话。":
+    "These options affect only the session about to be created.",
+  "关闭会话运行设置": "Close session runtime settings",
+  "使用全局默认": "Use global default",
+  "初始值来自全局设置；清空表示这个会话不追加。":
+    "The initial value comes from global settings. Clear it to append nothing to this session.",
+  "恢复全局默认": "Restore global defaults",
+  "完成": "Done",
+  "实际 + 附加": "Effective + appended",
+  "实际": "Effective",
+  "已附加": "Appended",
+  "输入 {{input}} · 输出 {{output}}":
+    "{{input}} input · {{output}} output",
+  "系统提示词：{{system}}；附加提示词：{{additional}}。点击查看详情。":
+    "System prompt: {{system}}; appended prompt: {{additional}}. Open for details.",
+  "未报告": "Not reported",
+  "已设置": "Configured",
+  "提示词": "Prompts",
   "先恢复会话，才能修改运行参数。":
     "Resume the session before changing runtime settings.",
   "工作目录": "Working directory",
@@ -645,6 +775,8 @@ const englishMessages: Record<string, string> = {
   "上一条指令未得到回复": "The previous instruction received no response",
   "恢复 Pi Worker，并重新发送最后一条用户指令。":
     "Resume the Pi worker and resend the last user instruction.",
+  "重新发送可能重复执行文件修改或命令。确认继续吗？":
+    "Resending may repeat file changes or commands. Continue?",
   "重试中…": "Retrying…",
   "恢复并重试": "Resume and retry",
   "已请求中止当前轮次": "Abort requested for the current turn",

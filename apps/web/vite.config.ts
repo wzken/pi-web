@@ -16,8 +16,8 @@ export default defineConfig({
         name: "Pi Web",
         short_name: "Pi Web",
         description: "Private remote runtime for Pi Coding Agent",
-        theme_color: "#0f1514",
-        background_color: "#0f1514",
+        theme_color: "#0b0b0c",
+        background_color: "#0b0b0c",
         display: "standalone",
         start_url: "/",
         icons: [

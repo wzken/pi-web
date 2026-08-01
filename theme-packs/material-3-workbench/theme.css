@@ -72,11 +72,8 @@ html[data-theme-id="material-3-workbench"] .nav-link.active::before {
 
 html[data-theme-id="material-3-workbench"] .panel,
 html[data-theme-id="material-3-workbench"] .session-card,
-html[data-theme-id="material-3-workbench"] .schedule-card,
 html[data-theme-id="material-3-workbench"] .toolbar,
 html[data-theme-id="material-3-workbench"] .dialog,
-html[data-theme-id="material-3-workbench"] .theme-choice,
-html[data-theme-id="material-3-workbench"] .background-preview,
 html[data-theme-id="material-3-workbench"] .composer-box {
   border-color: transparent;
   background: var(--panel);
@@ -100,17 +97,12 @@ html[data-theme-id="material-3-workbench"] .breadcrumbs {
 }
 
 html[data-theme-id="material-3-workbench"] .button {
-  min-height: 40px;
   border-radius: 999px;
-  padding-inline: 18px;
   letter-spacing: 0.01em;
 }
 
 html[data-theme-id="material-3-workbench"] .button-icon,
 html[data-theme-id="material-3-workbench"] .icon-button {
-  width: 40px;
-  height: 40px;
-  padding: 0;
   border-radius: 999px;
 }
 
@@ -149,29 +141,8 @@ html[data-theme-id="material-3-workbench"] .icon-button:hover:not(:disabled) {
   transform: none;
 }
 
-html[data-theme-id="material-3-workbench"] .workbench-topbar .button,
-html[data-theme-id="material-3-workbench"] .session-header .button {
-  min-height: 32px;
-  padding-inline: 10px;
-}
-
-html[data-theme-id="material-3-workbench"] .workbench-rail-footer .button {
-  min-width: 0;
-  min-height: 40px;
-  padding-inline: 4px;
-}
-
 html[data-theme-id="material-3-workbench"] .workbench-rail-footer .button span {
   white-space: nowrap;
-}
-
-html[data-theme-id="material-3-workbench"] .terminal-actions .button,
-html[data-theme-id="material-3-workbench"] .terminal-actions .icon-button {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  min-height: 32px;
-  padding: 0;
 }
 
 html[data-theme-id="material-3-workbench"] input,
@@ -259,19 +230,6 @@ html[data-theme-id="material-3-workbench"] *:focus-visible {
 }
 
 @media (max-width: 760px) {
-  html[data-theme-id="material-3-workbench"] .button {
-    min-height: 44px;
-  }
-
-  html[data-theme-id="material-3-workbench"] .session-header > .button,
-  html[data-theme-id="material-3-workbench"] .session-header > .tooltip .button,
-  html[data-theme-id="material-3-workbench"] .session-controls .button {
-    width: 36px;
-    min-width: 36px;
-    min-height: 36px;
-    padding: 0;
-  }
-
   html[data-theme-id="material-3-workbench"] .session-title {
     min-width: 0;
     margin-left: 3px;

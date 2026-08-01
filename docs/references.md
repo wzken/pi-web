@@ -13,8 +13,6 @@ Architecture and interaction references were reviewed, not copied:
 
 - `jmfederico/pi-web`: persistent workspaces, split daemon/web development,
   per-user services, remote-first operations, and a no-sandbox posture.
-- `agegr/pi-web`: session browsing grouped by working directory, structured
-  Markdown/tool presentation, context visibility, and file preview.
 - `ygncode/pi-web`: deployment lessons, event streaming, JSONL watching,
   PWA/mobile layout, and local-network access.
 - `cnbattle/pi-web`: pinned directory aliases, tool visibility, smart scroll,

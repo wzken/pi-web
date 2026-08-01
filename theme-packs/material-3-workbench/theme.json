@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "material-3-workbench",
   "name": "Material 3 Workbench",
-  "version": "2.0.0",
+  "version": "2.1.1",
   "description": "亮暗双模式、柔和表面容器、动态色角色与圆润状态层；参考 Google Material 3，非官方主题。",
   "author": "Pi Web",
   "schemes": {
@@ -28,7 +28,6 @@
         "--shadow": "0 2px 10px rgb(29 27 32 / 10%)",
         "--radius": "24px",
         "--radius-sm": "12px",
-        "--sidebar": "72px",
         "--font-ui": "Roboto, \"Google Sans\", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
         "--font-mono": "\"Roboto Mono\", \"SFMono-Regular\", Consolas, monospace"
       }
@@ -55,7 +54,6 @@
         "--shadow": "0 3px 16px rgb(0 0 0 / 36%)",
         "--radius": "24px",
         "--radius-sm": "12px",
-        "--sidebar": "72px",
         "--font-ui": "Roboto, \"Google Sans\", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
         "--font-mono": "\"Roboto Mono\", \"SFMono-Regular\", Consolas, monospace"
       }

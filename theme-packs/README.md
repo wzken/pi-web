@@ -38,7 +38,7 @@ Minimal dual-mode manifest:
   "version": "1.0.0",
   "schemes": {
     "light": { "tokens": { "--bg": "#f6f7f4", "--text": "#20241f" } },
-    "dark": { "tokens": { "--bg": "#111411", "--text": "#edf0ea" } }
+    "dark": { "tokens": { "--bg": "#0b0b0c", "--text": "#f5f5f6" } }
   },
   "css": "theme.css"
 }
@@ -62,7 +62,9 @@ html[data-theme-id="my-theme"] .panel {
 
 Pi Web's bundled styles use CSS Modules, but semantic classes such as `.panel`,
 `.button`, and `.session-header` are retained as a stable theme API. Theme CSS
-must target those semantic classes rather than generated class names.
+must target those semantic classes rather than generated class names. Theme
+packs may change colors, typography, radii, and surface treatment, but must not
+change shell widths, control dimensions, positioning, or visibility.
 
 If a custom theme makes the interface unusable, open:
 
@@ -93,7 +95,8 @@ Workbench。源码位于各自目录，可安装 ZIP 位于 `dist/`。
 
 Pi Web 内置样式使用 CSS Modules，但 `.panel`、`.button`、
 `.session-header` 等语义类会作为稳定的主题接口保留。主题 CSS 不应引用构建时
-生成的哈希类名。
+生成的哈希类名。主题包可以调整颜色、字体、圆角和表面质感，但不得改动侧栏
+宽度、控件尺寸、定位或可见性。
 
 如果主题导致界面无法使用，请访问：
 

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@pi-web/config": "workspace:*",
+    "@pi-web/protocol": "workspace:*",
     "@pi-web/server": "workspace:*",
     "@pi-web/sessiond": "workspace:*",
     "@pi-web/shared": "workspace:*"

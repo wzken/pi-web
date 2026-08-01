@@ -1,5 +1,6 @@
 import { createConnection } from "node:net";
 import { randomUUID } from "node:crypto";
+import { StringDecoder } from "node:string_decoder";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 
@@ -27,13 +28,20 @@ const inputSchema = Type.Object({
   timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 86400 })),
   enabled: Type.Optional(Type.Boolean())
 });
-type ScheduleInput = Static<typeof inputSchema>;
+export type ScheduleInput = Static<typeof inputSchema>;
 
-interface SchedulerContext {
+export interface SchedulerContext {
   socket: string;
   token: string;
   sessionId: string;
 }
+
+interface SchedulerTransportOptions {
+  maxResponseBytes?: number;
+  timeoutMs?: number;
+}
+
+const defaultMaxSchedulerResponseBytes = 64 * 1024 * 1024;
 
 export default function piWebScheduler(pi: ExtensionAPI): void {
   const context: SchedulerContext | null =
@@ -81,29 +89,53 @@ export default function piWebScheduler(pi: ExtensionAPI): void {
   });
 }
 
-async function callScheduler(
+export async function callScheduler(
   context: SchedulerContext,
   input: ScheduleInput & { source: "model" },
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: SchedulerTransportOptions = {}
 ): Promise<unknown> {
+  if (signal?.aborted) {
+    throw new Error("Scheduler request aborted");
+  }
+
   const id = randomUUID();
   return await new Promise((resolve, reject) => {
     const socket = createConnection(context.socket);
+    const decoder = new StringDecoder("utf8");
     let buffer = "";
+    let bufferBytes = 0;
+    let settled = false;
+    const maxResponseBytes =
+      options.maxResponseBytes ?? defaultMaxSchedulerResponseBytes;
+    const timeoutMs = options.timeoutMs ?? 10_000;
+
     const cleanup = () => {
       signal?.removeEventListener("abort", abort);
+      socket.setTimeout(0);
       socket.destroy();
     };
-    const abort = () => {
+    const succeed = (value: unknown) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      reject(new Error("Scheduler request aborted"));
+      resolve(value);
     };
-    signal?.addEventListener("abort", abort, { once: true });
-    socket.setTimeout(10_000, () => {
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      reject(new Error("Scheduler request timed out"));
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const abort = () => {
+      fail(new Error("Scheduler request aborted"));
+    };
+
+    socket.setTimeout(timeoutMs, () => {
+      fail(new Error("Scheduler request timed out"));
     });
     socket.on("connect", () => {
+      if (settled) return;
       socket.write(
         `${JSON.stringify({
           kind: "request",
@@ -114,17 +146,31 @@ async function callScheduler(
             sessionId: context.sessionId,
             input
           }
-        })}\n`
+        })}\n`,
+        (error) => {
+          if (error) fail(normalizeConnectionCloseError(error));
+        }
       );
     });
-    socket.on("data", (chunk) => {
-      buffer += chunk.toString("utf8");
+    socket.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      buffer += decoder.write(chunk);
+      bufferBytes += chunk.byteLength;
       let newline = buffer.indexOf("\n");
       while (newline >= 0) {
         const line = buffer.slice(0, newline).replace(/\r$/, "");
         buffer = buffer.slice(newline + 1);
+        bufferBytes = Buffer.byteLength(buffer);
         newline = buffer.indexOf("\n");
         if (!line) continue;
+        if (Buffer.byteLength(line) > maxResponseBytes) {
+          fail(
+            new Error(
+              `Scheduler response exceeds ${maxResponseBytes} bytes`
+            )
+          );
+          return;
+        }
         try {
           const message = JSON.parse(line) as {
             kind?: string;
@@ -134,18 +180,38 @@ async function callScheduler(
             error?: { message?: string };
           };
           if (message.kind !== "response" || message.id !== id) continue;
-          cleanup();
-          if (message.ok) resolve(message.result);
-          else reject(new Error(message.error?.message || "Scheduler request failed"));
+          if (message.ok) succeed(message.result);
+          else fail(new Error(message.error?.message || "Scheduler request failed"));
+          return;
         } catch (error) {
-          cleanup();
-          reject(error);
+          fail(error);
+          return;
         }
+      }
+      if (bufferBytes > maxResponseBytes) {
+        fail(
+          new Error(`Scheduler response exceeds ${maxResponseBytes} bytes`)
+        );
       }
     });
     socket.on("error", (error) => {
-      cleanup();
-      reject(error);
+      fail(normalizeConnectionCloseError(error));
     });
+    socket.on("end", () => {
+      fail(new Error("Scheduler connection ended before a response"));
+    });
+    socket.on("close", () => {
+      fail(new Error("Scheduler connection closed before a response"));
+    });
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
+
+function normalizeConnectionCloseError(error: Error & { code?: string }): Error {
+  if (error.code !== "EPIPE" && error.code !== "ECONNRESET") return error;
+
+  return new Error("Scheduler connection closed before a response", {
+    cause: error
   });
 }

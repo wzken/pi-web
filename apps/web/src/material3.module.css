@@ -1,0 +1,203 @@
+/*
+ * Material 3 semantic layer.
+ *
+ * Existing theme packages continue to own the legacy Pi tokens. The appearance
+ * engine maps user-selected role colors to the `--md-sys-*` variables below,
+ * while these fallbacks keep every route usable before preferences load.
+ */
+
+:root {
+  --md-sys-color-primary: var(--lime);
+  --md-sys-color-on-primary: var(--lime-ink);
+  --md-sys-color-primary-container: color-mix(
+    in srgb,
+    var(--lime) 18%,
+    var(--panel-2)
+  );
+  --md-sys-color-on-primary-container: var(--text);
+  --md-sys-color-secondary: var(--teal);
+  --md-sys-color-secondary-container: color-mix(
+    in srgb,
+    var(--teal) 16%,
+    var(--panel-2)
+  );
+  --md-sys-color-tertiary: var(--violet);
+  --md-sys-color-tertiary-container: color-mix(
+    in srgb,
+    var(--violet) 16%,
+    var(--panel-2)
+  );
+  --md-sys-color-surface: var(--bg);
+  --md-sys-color-surface-container-lowest: var(--bg-raised);
+  --md-sys-color-surface-container-low: var(--panel);
+  --md-sys-color-surface-container: var(--panel-2);
+  --md-sys-color-surface-container-high: var(--panel-3);
+  --md-sys-color-surface-container-highest: color-mix(
+    in srgb,
+    var(--text) 8%,
+    var(--panel-3)
+  );
+  --md-sys-color-on-surface: var(--text);
+  --md-sys-color-on-surface-variant: var(--text-soft);
+  --md-sys-color-outline: var(--line);
+  --md-sys-color-outline-variant: var(--line-soft);
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 999px;
+}
+
+.button {
+  min-height: 40px;
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: none;
+}
+
+.button-sm {
+  min-height: 36px;
+}
+
+.button-lg {
+  min-height: 48px;
+}
+
+.button-icon {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+
+html[data-color-mode] .button-primary {
+  border-color: transparent;
+  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-primary);
+}
+
+html[data-color-mode] .button-primary:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-primary) 88%,
+    var(--md-sys-color-on-primary)
+  );
+}
+
+html[data-color-mode] .button-secondary,
+html[data-color-mode] .button-toolbar.is-active {
+  border-color: transparent;
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+html[data-color-mode] .button-outline,
+html[data-color-mode] .button-toolbar,
+html[data-color-mode] .icon-button {
+  border-color: var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+}
+
+html[data-color-mode] .button-ghost {
+  border-color: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  background: transparent;
+}
+
+html[data-color-mode] .button-secondary:hover:not(:disabled),
+html[data-color-mode] .button-outline:hover:not(:disabled),
+html[data-color-mode] .button-toolbar:hover:not(:disabled),
+html[data-color-mode] .button-ghost:hover:not(:disabled),
+html[data-color-mode] .icon-button:hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--md-sys-color-on-surface);
+  background: color-mix(
+    in srgb,
+    var(--md-sys-color-on-surface) 8%,
+    transparent
+  );
+}
+
+.button:focus-visible,
+.icon-button:focus-visible,
+.nav-link:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.panel {
+  border-color: transparent;
+  border-radius: var(--md-sys-shape-corner-large);
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: none;
+}
+
+.dialog {
+  border-color: var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.field input,
+.field textarea,
+.field select {
+  min-height: 48px;
+  border-color: var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-medium);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.field textarea {
+  min-height: 96px;
+}
+
+.field input:hover,
+.field textarea:hover,
+.field select:hover {
+  border-color: var(--md-sys-color-on-surface);
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 1px var(--md-sys-color-primary);
+}
+
+.sidebar {
+  border-color: var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.nav-link {
+  border-radius: var(--md-sys-shape-corner-large);
+}
+
+.nav-link.active {
+  color: var(--md-sys-color-on-primary-container);
+  background: var(--md-sys-color-primary-container);
+}
+
+.tooltip-content {
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-surface);
+  background: var(--md-sys-color-on-surface);
+}
+
+@media (hover: none), (max-width: 760px) {
+  .tooltip-content {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .nav-link {
+    transition: none;
+  }
+}

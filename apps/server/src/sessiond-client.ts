@@ -6,8 +6,11 @@ import { encodeJsonl, LfJsonlDecoder } from "@pi-web/pi-rpc";
 import {
   isInternalMessage,
   maxPromptRequestBytes,
+  type AuthRotateInput,
+  type AuthRotateResult,
   type InternalResponse,
-  type RealtimeEvent
+  type RealtimeEvent,
+  type SessiondDoctorResult
 } from "@pi-web/protocol";
 import { PiWebError } from "@pi-web/shared";
 
@@ -20,18 +23,25 @@ interface Pending {
 export class SessiondClient extends EventEmitter {
   readonly #socketPath: string;
   readonly #tokenFile: string;
+  readonly #createConnection: typeof createConnection;
   readonly #pending = new Map<string, Pending>();
   #socket: Socket | null = null;
+  #openingSocket: Socket | null = null;
   #authToken: string | null = null;
   #connecting: Promise<void> | null = null;
   #stopped = false;
   #retryMs = 250;
   #reconnectTimer: NodeJS.Timeout | null = null;
 
-  constructor(socketPath: string, tokenFile: string) {
+  constructor(
+    socketPath: string,
+    tokenFile: string,
+    connect: typeof createConnection = createConnection
+  ) {
     super();
     this.#socketPath = socketPath;
     this.#tokenFile = tokenFile;
+    this.#createConnection = connect;
   }
 
   async start(): Promise<void> {
@@ -81,12 +91,25 @@ export class SessiondClient extends EventEmitter {
     });
   }
 
+  async rotateAccessKey(input: AuthRotateInput): Promise<AuthRotateResult> {
+    return await this.request<AuthRotateResult>("auth.rotate", input);
+  }
+
+  async doctor(timeoutMs = 30_000): Promise<SessiondDoctorResult> {
+    return await this.request<SessiondDoctorResult>(
+      "doctor",
+      undefined,
+      timeoutMs
+    );
+  }
+
   stop(): void {
     this.#stopped = true;
     if (this.#reconnectTimer) {
       clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
     }
+    this.#openingSocket?.destroy();
     this.#socket?.destroy();
     this.#socket = null;
     this.#authToken = null;
@@ -111,6 +134,13 @@ export class SessiondClient extends EventEmitter {
 
   async #openConnection(): Promise<void> {
     const authToken = (await readFile(this.#tokenFile, "utf8")).trim();
+    if (this.#stopped) {
+      throw new PiWebError(
+        "SESSIOND_UNAVAILABLE",
+        "Session daemon client is stopped",
+        503
+      );
+    }
     if (!authToken) {
       throw new PiWebError(
         "SESSIOND_AUTH_UNAVAILABLE",
@@ -119,7 +149,8 @@ export class SessiondClient extends EventEmitter {
       );
     }
     await new Promise<void>((resolve, reject) => {
-      const socket = createConnection(this.#socketPath);
+      const socket = this.#createConnection(this.#socketPath);
+      this.#openingSocket = socket;
       const decoder = new LfJsonlDecoder({
         maxLineBytes: maxPromptRequestBytes,
         onValue: (value) => this.#handleValue(value),
@@ -129,6 +160,18 @@ export class SessiondClient extends EventEmitter {
       socket.on("data", (chunk) => decoder.push(chunk));
       socket.on("end", () => decoder.end());
       socket.once("connect", () => {
+        if (this.#stopped || this.#openingSocket !== socket) {
+          socket.destroy();
+          reject(
+            new PiWebError(
+              "SESSIOND_UNAVAILABLE",
+              "Session daemon client is stopped",
+              503
+            )
+          );
+          return;
+        }
+        this.#openingSocket = null;
         if (this.#reconnectTimer) {
           clearTimeout(this.#reconnectTimer);
           this.#reconnectTimer = null;
@@ -141,8 +184,20 @@ export class SessiondClient extends EventEmitter {
       });
       socket.once("error", reject);
       socket.on("close", () => {
-        if (this.#socket === socket) this.#socket = null;
-        if (this.#socket === null) this.#authToken = null;
+        if (this.#openingSocket === socket) {
+          this.#openingSocket = null;
+          reject(
+            new PiWebError(
+              "SESSIOND_UNAVAILABLE",
+              "Session daemon connection closed before it was ready",
+              503
+            )
+          );
+          return;
+        }
+        if (this.#socket !== socket) return;
+        this.#socket = null;
+        this.#authToken = null;
         this.#rejectPending();
         this.emit("disconnect");
         if (!this.#stopped) this.#scheduleReconnect();
@@ -164,14 +219,7 @@ export class SessiondClient extends EventEmitter {
     this.#pending.delete(response.id);
     if (response.ok) pending.resolve(response.result);
     else {
-      pending.reject(
-        new PiWebError(
-          response.error?.code ?? "SESSIOND_ERROR",
-          response.error?.message ?? "Session daemon request failed",
-          400,
-          response.error?.details
-        )
-      );
+      pending.reject(sessiondResponseError(response.error));
     }
   }
 
@@ -194,4 +242,21 @@ export class SessiondClient extends EventEmitter {
     this.#reconnectTimer = timer;
     timer.unref();
   }
+}
+
+export function sessiondResponseError(
+  error: InternalResponse["error"]
+): PiWebError {
+  const statusCode =
+    Number.isInteger(error?.statusCode) &&
+    error!.statusCode >= 400 &&
+    error!.statusCode <= 599
+      ? error!.statusCode
+      : 500;
+  return new PiWebError(
+    error?.code ?? "SESSIOND_ERROR",
+    error?.message ?? "Session daemon request failed",
+    statusCode,
+    error?.details
+  );
 }

@@ -1,52 +1,36 @@
 import type { SessionRecord } from "@pi-web/protocol";
-import { useEffect, useState } from "react";
-import { api } from "../../../api";
 import { SessionNavigator } from "../../../SessionNavigator";
-import { FileBrowser } from "./FileBrowser";
+import { useSessionList } from "../../../useSessionList";
 
 interface SessionRailProps {
   currentId: string;
   cwd: string;
+  onClose: () => void;
   onSessionRenamed: (session: SessionRecord) => void;
 }
 
 export function SessionRail({
   currentId,
   cwd,
+  onClose,
   onSessionRenamed
 }: SessionRailProps) {
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    api<SessionRecord[]>("/api/sessions", { signal: controller.signal })
-      .then(setSessions)
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, []);
+  const { sessions, setSessions } = useSessionList();
 
   return (
     <SessionNavigator
-      sessions={sessions}
+      sessions={sessions ?? []}
       currentId={currentId}
       cwd={cwd}
+      onClose={onClose}
       onSessionRenamed={(updated) => {
         setSessions((current) =>
-          current.map((session) =>
+          current?.map((session) =>
             session.id === updated.id ? updated : session
-          )
+          ) ?? null
         );
         onSessionRenamed(updated);
       }}
-      explorer={
-        <FileBrowser
-          key={`rail-files:${currentId}`}
-          sessionId={currentId}
-          cwd={cwd}
-          onClose={() => undefined}
-          compact
-        />
-      }
     />
   );
 }

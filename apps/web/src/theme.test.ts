@@ -7,10 +7,9 @@ import {
   themeTokensForScheme
 } from "./theme";
 
-const light = theme("agegr-light", "light");
-const dark = theme("agegr-dark", "dark");
+const piNeutral = dualTheme("pi-neutral", "built-in");
 const customLight = theme("custom-light", "light", "uploaded");
-const adaptive = dualTheme();
+const adaptive = dualTheme("adaptive", "uploaded");
 
 describe("resolveActiveTheme", () => {
   it("keeps a selected theme when its color scheme matches", () => {
@@ -19,9 +18,9 @@ describe("resolveActiveTheme", () => {
     );
   });
 
-  it("falls back to the built-in opposite scheme in automatic mode", () => {
+  it("falls back to the neutral built-in scheme in automatic mode", () => {
     expect(resolveActiveTheme(catalog("custom-light"), "dark")?.id).toBe(
-      "agegr-dark"
+      "pi-neutral"
     );
   });
 
@@ -34,9 +33,9 @@ describe("resolveActiveTheme", () => {
     );
   });
 
-  it("forces the light built-in theme in safe mode", () => {
-    expect(resolveActiveTheme(catalog("agegr-dark"), "dark", true)?.id).toBe(
-      "agegr-light"
+  it("forces the neutral built-in theme in safe mode", () => {
+    expect(resolveActiveTheme(catalog("adaptive"), "dark", true)?.id).toBe(
+      "pi-neutral"
     );
   });
 });
@@ -64,7 +63,7 @@ describe("resolveColorScheme", () => {
 
 function catalog(themeId: string): ThemeCatalog {
   return {
-    themes: [light, dark, customLight, adaptive],
+    themes: [piNeutral, customLight, adaptive],
     preferences: {
       themeId,
       colorMode: "system",
@@ -75,16 +74,29 @@ function catalog(themeId: string): ThemeCatalog {
         position: "center",
         overlay: 0.18,
         blur: 0
+      },
+      materialTheme: {
+        enabled: false,
+        colors: {
+          primary: "#54545B",
+          secondary: "#69656C",
+          tertiary: "#5D6765",
+          neutral: "#77777A"
+        },
+        presetId: "graphite"
       }
     }
   };
 }
 
-function dualTheme(): InstalledTheme {
+function dualTheme(
+  id: string,
+  source: InstalledTheme["source"]
+): InstalledTheme {
   return {
     schemaVersion: 2,
-    id: "adaptive",
-    name: "adaptive",
+    id,
+    name: id,
     version: "2",
     description: "",
     author: "Pi Web",
@@ -92,7 +104,7 @@ function dualTheme(): InstalledTheme {
       light: { tokens: { "--bg": "#fff" } },
       dark: { tokens: { "--bg": "#111" } }
     },
-    source: "uploaded",
+    source,
     updatedAt: "2026-07-27T00:00:00.000Z"
   };
 }

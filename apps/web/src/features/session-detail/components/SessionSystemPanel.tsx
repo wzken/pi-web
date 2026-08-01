@@ -1,12 +1,16 @@
 import type { SessionSnapshot } from "@pi-web/protocol";
+import { X } from "lucide-react";
+import { IconButton } from "../../../components";
 import { asRecord } from "../utils/session-parsing";
 import { t } from "../../../i18n";
 import { ui } from "../../../ui";
 
 export function SessionSystemPanel({
-  snapshot
+  snapshot,
+  onClose
 }: {
   snapshot: SessionSnapshot;
+  onClose: () => void;
 }) {
   const { session } = snapshot;
   const state = asRecord(snapshot.state);
@@ -14,7 +18,21 @@ export function SessionSystemPanel({
     typeof state.systemPrompt === "string" ? state.systemPrompt : null;
 
   return (
-    <div className={ui("workbench-system-panel")}>
+    <div
+      className={ui("workbench-system-panel")}
+      role="region"
+      aria-label={t("会话系统信息")}
+    >
+      <header className={ui("workbench-system-panel-heading")}>
+        <strong>{t("系统")}</strong>
+        <IconButton
+          label={t("关闭系统信息")}
+          variant="toolbar"
+          onClick={onClose}
+        >
+          <X size={16} />
+        </IconButton>
+      </header>
       <div>
         <strong>{t("模型")}</strong>
         <span>{session.model ?? t("Pi 默认模型")}</span>

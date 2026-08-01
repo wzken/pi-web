@@ -1,35 +1,45 @@
-import { Activity, MessageSquarePlus, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { SessionRecord } from "@pi-web/protocol";
-import { api, formatDate, formatNumber, isAbortError } from "../api";
+import {
+  Activity,
+  MessageSquarePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+  X
+} from "lucide-react";
+import { useMemo } from "react";
+import { formatDate, formatNumber } from "../api";
 import {
   Button,
+  ButtonLink,
   EmptyState,
   ErrorBanner,
+  IconButton,
   Loading,
   StatusDot
 } from "../components";
-import { Link, useNavigate } from "../router";
+import { Link, useNavigate, useSearchParams } from "../router";
 import { useUnreadSessions } from "../useUnreadSessions";
 import { t } from "../i18n";
 import { ui } from "../ui";
+import { useSessionList } from "../useSessionList";
+import { SessionNavigator, useWorkbenchRail } from "../SessionNavigator";
 
 export function SessionsPage() {
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState<SessionRecord[] | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [query, setQuery] = useState("");
+  const [searchParams] = useSearchParams();
+  const { sessions, setSessions, error } = useSessionList();
+  const query = searchParams.get("q") ?? "";
   const unreadSessions = useUnreadSessions();
+  const [railOpen, setRailOpen] = useWorkbenchRail();
 
-  useEffect(() => {
-    const controller = new AbortController();
-    api<SessionRecord[]>("/api/sessions", { signal: controller.signal })
-      .then(setSessions)
-      .catch((reason) => {
-        if (!isAbortError(reason)) setError(reason);
-      });
-    return () => controller.abort();
-  }, []);
+  function setQuery(value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set("q", value);
+    else next.delete("q");
+    const search = next.toString();
+    navigate(`/sessions${search ? `?${search}` : ""}`, { replace: true });
+  }
 
   const filtered = useMemo(() => {
     if (!sessions) return [];
@@ -41,11 +51,70 @@ export function SessionsPage() {
     );
   }, [query, sessions]);
 
-  if (error) return <ErrorBanner error={error} />;
+  if (error && !sessions) return <ErrorBanner error={error} />;
   if (!sessions) return <Loading label={t("读取会话")} />;
 
   return (
-    <>
+    <div
+      className={ui(
+        `home-workbench sessions-workbench-page${railOpen ? "" : " rail-collapsed"}`
+      )}
+    >
+      {railOpen && (
+        <>
+          <SessionNavigator
+            sessions={sessions}
+            onClose={() => setRailOpen(false)}
+            onSessionRenamed={(updated) =>
+              setSessions((current) =>
+                current?.map((session) =>
+                  session.id === updated.id ? updated : session
+                ) ?? null
+              )
+            }
+          />
+          <button
+            className={ui("workbench-rail-backdrop")}
+            aria-label={t("收起会话栏")}
+            onClick={() => setRailOpen(false)}
+          />
+        </>
+      )}
+
+      <main className={ui("sessions-workbench-main")}>
+        <header className={ui("workbench-topbar")}>
+          <IconButton
+            className={ui("workbench-rail-toggle")}
+            label={railOpen ? t("收起会话栏") : t("展开会话栏")}
+            variant="toolbar"
+            aria-expanded={railOpen}
+            onClick={() => setRailOpen((value) => !value)}
+          >
+            {railOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+          </IconButton>
+          <div className={ui("workbench-topbar-title")}>
+            <strong>{t("会话")}</strong>
+            <span>{t("全部工作区")}</span>
+          </div>
+          <div className={ui("workbench-topbar-actions")}>
+            <Button variant="toolbar" size="sm" onClick={() => navigate("/")}>
+              <MessageSquarePlus size={15} />
+              <span>{t("新会话")}</span>
+            </Button>
+            <ButtonLink
+              to="/settings"
+              variant="toolbar"
+              size="icon"
+              aria-label={t("设置")}
+              title={t("设置")}
+            >
+              <Settings size={16} />
+            </ButtonLink>
+          </div>
+        </header>
+
+        <div className={ui("sessions-workbench-content")}>
+      {error !== null && <ErrorBanner error={error} />}
       <header className={ui("page-header")}>
         <div>
           <p className={ui("eyebrow")}>SESSIONS</p>
@@ -59,14 +128,24 @@ export function SessionsPage() {
       </header>
 
       <div className={ui("toolbar")}>
-        <label className={ui("search-box")}>
-          <Search size={17} />
+        <div className={ui("search-box")} role="search">
+          <Search size={17} aria-hidden="true" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t("搜索名称或工作目录")}
+            aria-label={t("搜索名称或工作目录")}
           />
-        </label>
+          {query && (
+            <IconButton
+              label={t("清除搜索")}
+              size="sm"
+              onClick={() => setQuery("")}
+            >
+              <X size={14} />
+            </IconButton>
+          )}
+        </div>
         <span className={ui("count-label")}>{t("{{count}} 个会话", { count: filtered.length })}</span>
       </div>
 
@@ -75,7 +154,11 @@ export function SessionsPage() {
           icon={<Activity size={25} />}
           title={query ? t("没有匹配的会话") : t("开始第一个会话")}
           action={
-            !query && (
+            query ? (
+              <Button variant="secondary" onClick={() => setQuery("")}>
+                {t("清除搜索")}
+              </Button>
+            ) : (
               <Button onClick={() => navigate("/")}>
                 {t("输入第一条任务")}
               </Button>
@@ -123,6 +206,8 @@ export function SessionsPage() {
           ))}
         </div>
       )}
-    </>
+        </div>
+      </main>
+    </div>
   );
 }

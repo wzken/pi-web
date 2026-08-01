@@ -1,0 +1,794 @@
+/*
+ * Unified application/workbench shell.
+ *
+ * This module is loaded after the component layers and owns shell geometry,
+ * high-frequency controls, and responsive runtime settings. Theme packages
+ * continue to target the stable semantic classes.
+ */
+
+:root {
+  --workspace-app-rail: 80px;
+  --workbench-rail: 264px;
+  --workbench-inspector: min(640px, 46vw);
+  --workbench-toolbar: 64px;
+  --workspace-control: 40px;
+}
+
+.app-shell-workbench .page {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  padding: 0;
+  overflow: hidden;
+}
+
+.home-workbench,
+.sessions-workbench-page,
+.session-workbench {
+  display: grid;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.conversation-pane {
+  position: relative;
+}
+
+.workbench-session-rail {
+  position: relative;
+  display: grid;
+  grid-template-rows:
+    var(--workbench-toolbar)
+    48px
+    minmax(0, 1fr)
+    52px;
+  overflow: visible;
+}
+
+.home-start {
+  display: grid;
+}
+
+.workbench-rail-backdrop {
+  display: none;
+}
+
+.workbench-rail-brand {
+  position: relative;
+  overflow: visible;
+}
+
+.workbench-rail-actions {
+  position: relative;
+  z-index: 4;
+}
+
+.workbench-rail-actions .button,
+.workbench-topbar .button,
+.session-header .button {
+  width: auto;
+  min-width: var(--workspace-control);
+  height: var(--workspace-control);
+  min-height: var(--workspace-control);
+}
+
+.workbench-rail-close {
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  right: -30px;
+  display: inline-flex;
+  filter: drop-shadow(0 5px 13px color-mix(in srgb, var(--bg) 58%, transparent));
+}
+
+.workbench-rail-close:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--lime) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.home-workbench,
+.home-workbench.rail-collapsed,
+.sessions-workbench-page,
+.sessions-workbench-page.rail-collapsed {
+  width: 100%;
+  grid-template-columns: var(--workbench-rail) minmax(0, 1fr);
+}
+
+.home-workbench.rail-collapsed,
+.sessions-workbench-page.rail-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.session-workbench {
+  width: 100%;
+  grid-template-columns:
+    var(--workbench-rail)
+    minmax(0, 1fr)
+    var(--workbench-inspector, min(720px, 50vw));
+}
+
+.session-workbench.files-collapsed {
+  grid-template-columns: var(--workbench-rail) minmax(0, 1fr) 0;
+}
+
+.session-workbench.rail-collapsed {
+  grid-template-columns:
+    0
+    minmax(0, 1fr)
+    var(--workbench-inspector, min(720px, 50vw));
+}
+
+.session-workbench.rail-collapsed.files-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+.session-workbench:not(.files-collapsed) .session-usage {
+  display: none;
+}
+
+.session-groups {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-rail-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 5px 10px 7px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.workbench-rail-footer .button {
+  width: 100%;
+  min-height: var(--workspace-control);
+  justify-content: flex-start;
+  gap: 9px;
+  padding-inline: 12px;
+  border: 0;
+  border-radius: 14px;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 11px;
+}
+
+.workbench-rail-footer .button:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.home-composer-tools {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.home-runtime-summary {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  padding-inline: 5px;
+  color: var(--text-dim);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-runtime-summary i {
+  opacity: 0.55;
+  font-style: normal;
+}
+
+.home-runtime-summary b {
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: var(--lime);
+  background: color-mix(in srgb, var(--lime) 12%, transparent);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.runtime-config-dialog {
+  display: grid;
+  min-width: 0;
+  gap: 22px;
+}
+
+.runtime-config-heading {
+  align-items: flex-start;
+}
+
+.runtime-config-heading > div {
+  min-width: 0;
+}
+
+.runtime-config-heading > div > span {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.runtime-config-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 0.56fr);
+  gap: 16px;
+}
+
+.runtime-config-grid .field {
+  min-width: 0;
+}
+
+.runtime-config-grid .field > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.runtime-config-grid :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+  border-color: var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.runtime-config-grid :is(input, select) {
+  min-height: 44px;
+}
+
+.runtime-config-grid textarea {
+  min-height: 118px;
+  resize: vertical;
+}
+
+.runtime-directory-field,
+.runtime-prompt-field,
+.runtime-config-note {
+  grid-column: 1 / -1;
+}
+
+.runtime-directory-field .directory-picker-trigger {
+  width: 100%;
+  max-width: none;
+  min-height: 44px;
+  justify-content: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.runtime-prompt-field small,
+.runtime-config-note {
+  margin: 7px 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.runtime-config-actions {
+  margin-top: 0;
+}
+
+.runtime-config-actions .button {
+  min-height: var(--workspace-control);
+}
+
+.composer-modes {
+  gap: 5px;
+}
+
+.composer-modes > .runtime-settings {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.runtime-settings-trigger {
+  max-width: min(220px, 34vw);
+}
+
+.runtime-settings-trigger .button-content {
+  min-width: 0;
+}
+
+.runtime-settings-trigger .button-content > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-header {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  min-width: 0;
+  grid-template-columns:
+    var(--workspace-control)
+    minmax(150px, 1fr)
+    auto
+    auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-title {
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+}
+
+.session-title-line,
+.session-title > p {
+  min-width: 0;
+}
+
+.session-title-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.session-title h1 {
+  margin: 0;
+}
+
+.session-title > p {
+  margin: 5px 0 0;
+  font-family: var(--font-mono);
+  font-size: 8px;
+}
+
+.session-title h1,
+.session-title > p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-usage {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.session-fact {
+  display: inline-flex;
+  min-width: 0;
+  height: 34px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.session-fact > svg {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+}
+
+.session-fact b {
+  overflow: hidden;
+  max-width: 116px;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+}
+
+.session-fact small {
+  color: var(--text-dim);
+  font-size: 8px;
+}
+
+.session-prompt-fact {
+  min-width: auto;
+  height: 34px;
+  min-height: 34px;
+  padding-inline: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+
+.session-prompt-fact .button-content {
+  min-width: 0;
+  gap: 5px;
+}
+
+.session-prompt-fact[data-active="true"] {
+  border-color: color-mix(in srgb, var(--lime) 42%, var(--line));
+}
+
+.session-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-settings-link {
+  display: inline-flex;
+  width: var(--workspace-control);
+  min-width: var(--workspace-control);
+  height: var(--workspace-control);
+  padding: 0;
+  border-radius: 999px;
+}
+
+.session-settings-link .button-content {
+  width: 100%;
+}
+
+@media (min-width: 761px) {
+  .sidebar {
+    width: var(--workspace-app-rail);
+    align-items: stretch;
+    border-right: 1px solid var(--line-soft);
+    background: var(--panel);
+    backdrop-filter: none;
+  }
+
+  .main-column,
+  .app-shell-workbench > .main-column {
+    width: calc(100% - var(--workspace-app-rail));
+    margin-left: var(--workspace-app-rail);
+  }
+
+  .sidebar-brand {
+    width: 100%;
+    min-height: var(--workbench-toolbar);
+    justify-content: center;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .sidebar-brand > div:not(.brand-mark) {
+    display: none;
+  }
+
+  .brand-mark {
+    width: 46px;
+    min-width: 46px;
+    height: 46px;
+    min-height: 46px;
+    border: 0;
+    border-radius: 14px;
+    color: var(--lime);
+    background: color-mix(in srgb, var(--lime) 18%, var(--panel-3));
+    box-shadow: none;
+  }
+
+  .command-trigger:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--lime) 24%, var(--panel-3));
+  }
+
+  .nav-list {
+    width: 100%;
+    gap: 8px;
+    padding: 20px 8px 12px;
+  }
+
+  .nav-link {
+    position: relative;
+    display: flex;
+    width: 64px;
+    min-height: 58px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 4px;
+    border: 0;
+    border-radius: 18px;
+    color: var(--text-dim);
+    background: transparent;
+    font-size: 9px;
+    font-weight: 560;
+    line-height: 1;
+  }
+
+  .nav-link > span,
+  .nav-link .button-content > span {
+    display: block;
+    overflow: hidden;
+    max-width: 58px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nav-link .button-content {
+    display: contents;
+  }
+
+  .sidebar-foot mdui-button.nav-link {
+    height: 58px;
+    min-height: 58px;
+  }
+
+  .sidebar-foot mdui-button.nav-link::part(button) {
+    flex-direction: column;
+    gap: 5px;
+    padding: 6px 4px;
+  }
+
+  .logout .button-content > span {
+    display: none;
+  }
+
+  .nav-link:hover {
+    color: var(--text);
+    background: var(--panel-3);
+  }
+
+  .nav-link.active {
+    color: var(--lime);
+    background: color-mix(in srgb, var(--lime) 15%, var(--panel-2));
+  }
+
+  .nav-link.active::before {
+    display: none;
+  }
+
+  .sidebar-foot {
+    display: grid;
+    width: 100%;
+    justify-items: center;
+    gap: 6px;
+    padding: 10px 8px 14px;
+    border-top: 0;
+  }
+
+  .runtime-chip {
+    display: none;
+  }
+
+  .logout {
+    margin: 0;
+  }
+}
+
+@media (max-width: 1280px) and (min-width: 761px) {
+  .session-workbench,
+  .session-workbench.files-collapsed {
+    grid-template-columns: var(--workbench-rail) minmax(0, 1fr) 0;
+  }
+
+  .session-workbench.rail-collapsed,
+  .session-workbench.rail-collapsed.files-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+}
+
+@media (max-width: 1140px) and (min-width: 761px) {
+  :root {
+    --workspace-app-rail: 72px;
+    --workbench-rail: 232px;
+  }
+
+  .nav-link {
+    width: 56px;
+  }
+
+  .session-model-fact,
+  .session-prompt-fact {
+    display: none;
+  }
+}
+
+@media (max-width: 880px) and (min-width: 761px) {
+  .session-context-fact {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --workspace-app-rail: 0px;
+    --workbench-toolbar: 58px;
+  }
+
+  .workbench-rail-backdrop {
+    position: fixed;
+    z-index: 99;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: color-mix(in srgb, var(--bg) 54%, transparent);
+  }
+
+  .app-shell-session-detail .mobile-header {
+    display: none;
+  }
+
+  .app-shell-session-detail .page,
+  .app-shell-session-detail .session-workbench,
+  .app-shell-session-detail .conversation-pane {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .home-workbench,
+  .home-workbench.rail-collapsed,
+  .sessions-workbench-page,
+  .sessions-workbench-page.rail-collapsed,
+  .session-workbench,
+  .session-workbench.files-collapsed,
+  .session-workbench.rail-collapsed,
+  .session-workbench.rail-collapsed.files-collapsed {
+    width: 100vw;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workbench-session-rail {
+    width: min(88vw, 340px);
+  }
+
+  .workbench-rail-close {
+    position: static;
+    filter: none;
+  }
+
+  .workbench-topbar,
+  .session-header {
+    min-height: var(--workbench-toolbar);
+    height: var(--workbench-toolbar);
+  }
+
+  .workbench-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .workbench-topbar-actions > .tooltip:last-child {
+    display: inline-flex;
+  }
+
+  .workbench-topbar-actions > .button:last-child {
+    display: inline-flex;
+  }
+
+  .workbench-topbar-actions .button-content > span {
+    display: none;
+  }
+
+  .home-runtime-summary {
+    display: none;
+  }
+
+  .runtime-config-dialog {
+    gap: 18px;
+  }
+
+  .runtime-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .runtime-directory-field,
+  .runtime-prompt-field,
+  .runtime-config-note {
+    grid-column: 1;
+  }
+
+  .runtime-config-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .composer-modes {
+    display: flex;
+    min-height: 34px;
+    align-items: center;
+  }
+
+  .composer-modes > .runtime-settings {
+    display: block;
+  }
+
+  .runtime-settings-trigger {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 999px;
+  }
+
+  .runtime-settings-trigger .button-content > span {
+    display: none;
+  }
+
+  .session-header {
+    grid-template-columns:
+      var(--workspace-control)
+      minmax(0, 1fr)
+      auto;
+    gap: 4px;
+    padding-inline: 7px;
+  }
+
+  .session-title {
+    text-align: center;
+  }
+
+  .session-usage {
+    display: none;
+  }
+
+  .session-controls {
+    gap: 0;
+  }
+
+  .desktop-file-toggle {
+    display: none;
+  }
+
+  .mobile-header > .button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .mobile-header {
+    grid-template-columns: 82px minmax(0, 1fr) 82px;
+  }
+
+  .mobile-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    width: 82px;
+  }
+
+  .mobile-header-actions > .button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .app-shell-workbench:not(.app-shell-session-detail) .page {
+    height: calc(100vh - var(--mobile-shell-header));
+    height: calc(100dvh - var(--mobile-shell-header));
+  }
+
+  .app-shell-workbench:not(.app-shell-session-detail) .home-workbench,
+  .app-shell-workbench:not(.app-shell-session-detail) .sessions-workbench-page {
+    height: 100%;
+  }
+}
+
+@media (max-width: 390px) {
+  .home-composer-tools {
+    gap: 1px;
+  }
+
+  .composer-modes .button {
+    padding-inline: 8px;
+  }
+
+  .session-title .status-pill {
+    display: none;
+  }
+}

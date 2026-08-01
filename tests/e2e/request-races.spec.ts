@@ -3,13 +3,12 @@ import { resolve } from "node:path";
 
 test("rapid navigation keeps the newest session and file preview", async ({
   page
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Desktop workbench race coverage");
-
+}) => {
   await page.goto("/");
   await page.getByLabel("访问密钥").fill("pi-web-e2e-access");
   await page.getByRole("button", { name: "安全登录" }).click();
-  await expect(page.getByRole("heading", { name: /要在 .* 中做什么/ })).toBeVisible();
+  const newSessionTask = page.getByLabel("新会话任务");
+  await expect(newSessionTask).toBeVisible();
 
   const firstName = `delayed session ${Date.now()}`;
   const secondName = `latest session ${Date.now()}`;

@@ -13,6 +13,7 @@ import type { FastifyInstance } from "fastify";
 import {
   themeManifestSchema,
   themePreferencesSchema,
+  defaultThemeMaterialSettings,
   type InstalledTheme,
   type ThemeCatalog,
   type ThemeManifest,
@@ -25,7 +26,8 @@ import { unzipSync } from "fflate";
 const MAX_ARCHIVE_BYTES = 8 * 1024 * 1024;
 const MAX_UNPACKED_BYTES = 20 * 1024 * 1024;
 const MAX_THEME_FILES = 240;
-const BUILTIN_UPDATED_AT = "2026-07-25T00:00:00.000Z";
+const BUILTIN_UPDATED_AT = "2026-08-01T00:00:00.000Z";
+const RETIRED_THEME_IDS = new Set(["agegr-light", "agegr-dark"]);
 const ARCHIVE_EXTENSIONS = new Set([
   ".json",
   ".css",
@@ -42,7 +44,7 @@ const ARCHIVE_EXTENSIONS = new Set([
 ]);
 
 const defaultPreferences: ThemePreferences = {
-  themeId: "agegr-light",
+  themeId: "pi-neutral",
   colorMode: "system",
   background: {
     kind: "none",
@@ -51,78 +53,75 @@ const defaultPreferences: ThemePreferences = {
     position: "center",
     overlay: 0.18,
     blur: 0
+  },
+  materialTheme: {
+    enabled: defaultThemeMaterialSettings.enabled,
+    colors: { ...defaultThemeMaterialSettings.colors },
+    presetId: defaultThemeMaterialSettings.presetId
   }
 };
 
 const builtinThemes: InstalledTheme[] = [
   {
-    schemaVersion: 1,
-    id: "agegr-light",
-    name: "Agegr Light",
-    version: "1.0.0",
-    description: "Pi Web 默认浅色工作台，参考 agegr/pi-web 的紧凑布局与克制层级。",
+    schemaVersion: 2,
+    id: "pi-neutral",
+    name: "Pi Neutral",
+    version: "2.0.1",
+    description: "Pi Web 的中性默认工作台，仅用语义色表达状态。",
     author: "Pi Web",
-    colorScheme: "light",
-    tokens: {
-      "--bg": "#fbfbfa",
-      "--bg-raised": "#ffffff",
-      "--panel": "#ffffff",
-      "--panel-2": "#f7f7f5",
-      "--panel-3": "#f0f1ee",
-      "--line": "#dedfda",
-      "--line-soft": "#ecece8",
-      "--text": "#20221f",
-      "--text-soft": "#626660",
-      "--text-dim": "#92958f",
-      "--lime": "#20221f",
-      "--lime-ink": "#ffffff",
-      "--teal": "#397a6a",
-      "--violet": "#6f63a8",
-      "--amber": "#9b6a1d",
-      "--red": "#b54a42",
-      "--blue": "#4774a8",
-      "--shadow": "none",
-      "--radius": "10px",
-      "--radius-sm": "7px",
-      "--sidebar": "64px",
-      "--font-ui": "Inter, ui-sans-serif, system-ui, sans-serif",
-      "--font-mono": "\"SFMono-Regular\", Consolas, monospace"
-    },
-    source: "built-in",
-    updatedAt: BUILTIN_UPDATED_AT
-  },
-  {
-    schemaVersion: 1,
-    id: "agegr-dark",
-    name: "Agegr Dark",
-    version: "1.0.0",
-    description: "低眩光深色工作台，保持与默认界面相同的紧凑信息层级。",
-    author: "Pi Web",
-    colorScheme: "dark",
-    tokens: {
-      "--bg": "#111411",
-      "--bg-raised": "#171a17",
-      "--panel": "#171a17",
-      "--panel-2": "#1b1f1b",
-      "--panel-3": "#222722",
-      "--line": "#343a34",
-      "--line-soft": "#292e29",
-      "--text": "#edf0ea",
-      "--text-soft": "#b2b8b0",
-      "--text-dim": "#7d857b",
-      "--lime": "#edf0ea",
-      "--lime-ink": "#151815",
-      "--teal": "#72b7a4",
-      "--violet": "#9e92d2",
-      "--amber": "#c99a50",
-      "--red": "#d8746c",
-      "--blue": "#75a2d3",
-      "--shadow": "none",
-      "--radius": "10px",
-      "--radius-sm": "7px",
-      "--sidebar": "64px",
-      "--font-ui": "Inter, ui-sans-serif, system-ui, sans-serif",
-      "--font-mono": "\"SFMono-Regular\", Consolas, monospace"
+    schemes: {
+      light: {
+        tokens: {
+          "--bg": "#f7f7f8",
+          "--bg-raised": "#ffffff",
+          "--panel": "#ffffff",
+          "--panel-2": "#f0f0f2",
+          "--panel-3": "#e8e8eb",
+          "--line": "#d6d6da",
+          "--line-soft": "#e5e5e8",
+          "--text": "#19191b",
+          "--text-soft": "#5f5f66",
+          "--text-dim": "#85858c",
+          "--lime": "#2f3136",
+          "--lime-ink": "#ffffff",
+          "--teal": "#555861",
+          "--violet": "#6b6872",
+          "--amber": "#94651c",
+          "--red": "#b54848",
+          "--blue": "#456f9e",
+          "--shadow": "0 18px 48px rgb(20 20 24 / 9%)",
+          "--radius": "12px",
+          "--radius-sm": "8px",
+          "--font-ui": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "--font-mono": "\"SFMono-Regular\", Consolas, monospace"
+        }
+      },
+      dark: {
+        tokens: {
+          "--bg": "#0b0b0c",
+          "--bg-raised": "#0f0f10",
+          "--panel": "#141415",
+          "--panel-2": "#1a1a1c",
+          "--panel-3": "#222225",
+          "--line": "#343438",
+          "--line-soft": "#252528",
+          "--text": "#f5f5f6",
+          "--text-soft": "#b2b2b7",
+          "--text-dim": "#7e7e85",
+          "--lime": "#e3e3e5",
+          "--lime-ink": "#151516",
+          "--teal": "#b7bbc3",
+          "--violet": "#c0bdc7",
+          "--amber": "#d2a15d",
+          "--red": "#df7777",
+          "--blue": "#83a3c9",
+          "--shadow": "0 22px 60px rgb(0 0 0 / 42%)",
+          "--radius": "12px",
+          "--radius-sm": "8px",
+          "--font-ui": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "--font-mono": "\"SFMono-Regular\", Consolas, monospace"
+        }
+      }
     },
     source: "built-in",
     updatedAt: BUILTIN_UPDATED_AT
@@ -237,8 +236,13 @@ export class ThemeService {
   }
 
   async updatePreferences(input: unknown): Promise<ThemeCatalog> {
-    const preferences = themePreferencesSchema.parse(input);
     const themes = [...builtinThemes, ...(await this.readUploadedThemes())];
+    const current = await this.readPreferences(themes);
+    const preferences = themePreferencesSchema.parse(
+      isPreferenceObject(input) && !("materialTheme" in input)
+        ? { ...input, materialTheme: current.materialTheme }
+        : input
+    );
     if (!themes.some((theme) => theme.id === preferences.themeId)) {
       throw new PiWebError("THEME_NOT_FOUND", "Selected theme is not installed", 404);
     }
@@ -289,7 +293,10 @@ export class ThemeService {
         error
       );
     }
-    if (builtinThemes.some((theme) => theme.id === manifest.id)) {
+    if (
+      builtinThemes.some((theme) => theme.id === manifest.id) ||
+      RETIRED_THEME_IDS.has(manifest.id)
+    ) {
       throw new PiWebError(
         "THEME_ID_RESERVED",
         "This theme id is reserved by a built-in theme",
@@ -454,7 +461,19 @@ export class ThemeService {
             const manifest = themeManifestSchema.parse(
               JSON.parse(await readFile(join(directory, "theme.json"), "utf8"))
             );
-            if (manifest.id !== entry.name) return null;
+            if (
+              manifest.id !== entry.name ||
+              RETIRED_THEME_IDS.has(manifest.id)
+            ) {
+              return null;
+            }
+            if (manifest.css) {
+              const cssPath = normalizeArchivePath(manifest.css);
+              if (cssPath !== manifest.css) return null;
+              validateThemeCss(
+                await readFile(join(directory, ...cssPath.split("/")))
+              );
+            }
             const info = await stat(directory);
             const query = encodeURIComponent(info.mtimeMs.toString(36));
             return toInstalledTheme(manifest, query, info.mtime.toISOString());
@@ -475,9 +494,17 @@ export class ThemeService {
       .then((contents) => themePreferencesSchema.safeParse(JSON.parse(contents)))
       .catch(() => null);
     const preferences = parsed?.success ? parsed.data : defaultPreferences;
-    return themes.some((theme) => theme.id === preferences.themeId)
-      ? preferences
-      : defaultPreferences;
+    if (themes.some((theme) => theme.id === preferences.themeId)) {
+      return preferences;
+    }
+    return {
+      ...preferences,
+      themeId: defaultPreferences.themeId,
+      background:
+        preferences.background.kind === "theme"
+          ? { ...preferences.background, kind: "none" }
+          : preferences.background
+    };
   }
 
   private async writePreferences(preferences: ThemePreferences): Promise<void> {
@@ -511,6 +538,10 @@ export class ThemeService {
         }
       : {};
   }
+}
+
+function isPreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function toInstalledTheme(
@@ -687,6 +718,13 @@ function validateThemeCss(contents: Uint8Array): void {
     throw new PiWebError(
       "THEME_CSS_UNSAFE",
       "Theme CSS contains a blocked external or executable construct",
+      400
+    );
+  }
+  if (/--(?:sidebar|workspace-app-rail)\s*:/i.test(css)) {
+    throw new PiWebError(
+      "THEME_CSS_LAYOUT_TOKEN",
+      "Theme CSS cannot override application-owned shell geometry",
       400
     );
   }

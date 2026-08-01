@@ -60,15 +60,13 @@ export function DashboardPage() {
       label: t("正在运行"),
       value: String(data.runningSessions),
       note: t("活跃 Pi 会话"),
-      icon: Radio,
-      tone: "lime"
+      icon: Radio
     },
     {
       label: t("今日会话"),
       value: String(data.sessionsToday),
       note: t("新创建"),
-      icon: Activity,
-      tone: "teal"
+      icon: Activity
     },
     {
       label: t("今日 Token"),
@@ -77,15 +75,13 @@ export function DashboardPage() {
         input: formatNumber(data.inputTokensToday),
         output: formatNumber(data.outputTokensToday)
       }),
-      icon: Sparkles,
-      tone: "violet"
+      icon: Sparkles
     },
     {
       label: t("已知成本"),
       value: formatCost(data.reportedCostToday),
       note: t("Provider 报告值"),
-      icon: Coins,
-      tone: "amber"
+      icon: Coins
     }
   ];
 
@@ -111,9 +107,9 @@ export function DashboardPage() {
       )}
 
       <section className={ui("metric-grid")} aria-label={t("今日指标")}>
-        {metrics.map(({ label, value, note, icon: Icon, tone }) => (
+        {metrics.map(({ label, value, note, icon: Icon }) => (
           <article className={ui("metric-card")} key={label}>
-            <div className={ui(`metric-icon metric-${tone}`)}>
+            <div className={ui("metric-icon")}>
               <Icon size={18} />
             </div>
             <span>{label}</span>

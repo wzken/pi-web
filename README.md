@@ -38,25 +38,29 @@ source code and branding are not included here.
 - An authenticated per-session xterm.js terminal with mobile controls.
 - Five-field Cron schedules with IANA time zones, history, overlap protection,
   timeout, and run-now.
-- Pi Packages, Skills, Extensions, templates, providers, and models.
+- Pi version, available models, and user-scoped Package operations surfaced
+  from the Pi CLI; project packages, Skills, Extensions, and prompt templates
+  remain the responsibility of each Pi worker and its project context.
 - Responsive desktop/mobile UI, command palette, notifications, and PWA assets.
 - System-aware Simplified Chinese and English interface.
 - Declarative ZIP theme packs with light, dark, and system modes.
 - Linux systemd user services and a non-root Docker Compose deployment.
 
-## Included themes
+## Theme packs
 
-Each ZIP contains both light and dark schemes and can follow the operating
-system:
+Pi Neutral is the built-in default. The following optional example packages
+each contain light and dark schemes and can follow the operating system:
 
 | Theme | Source | Installable ZIP |
 | --- | --- | --- |
 | Geist Workbench | [theme files](theme-packs/geist-workbench) | [download](theme-packs/dist/geist-workbench.zip) |
 | Material 3 Workbench | [theme files](theme-packs/material-3-workbench) | [download](theme-packs/dist/material-3-workbench.zip) |
 
-Import a ZIP from **Settings → Appearance → Theme packages**. The
-[theme-pack guide](theme-packs/README.md) documents the manifest, safety
-limits, and recovery mode.
+Settings can select packages already installed by an administrator. ZIP
+installation remains available through the compatibility API and deployment
+tooling, but is intentionally not exposed in the product UI. The [theme-pack
+guide](theme-packs/README.md) documents the manifest, safety limits, and
+recovery mode.
 
 ## Requirements
 

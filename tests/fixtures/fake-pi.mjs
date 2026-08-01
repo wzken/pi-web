@@ -26,6 +26,7 @@ let parentId = null;
 let buffer = "";
 let aborted = false;
 let streaming = false;
+let delayedInitialState = false;
 const steeringQueue = [];
 const followUpQueue = [];
 
@@ -97,22 +98,31 @@ function appendMessage(message) {
 
 function handle(request) {
   switch (request.type) {
-    case "get_state":
-      response("get_state", request, {
-        model,
-        thinkingLevel,
-        isStreaming: streaming,
-        isCompacting: false,
-        sessionFile,
-        sessionId,
-        sessionName: "Fake Pi",
-        systemPrompt: systemPrompt
-          ? `You are Pi, a coding agent.\n\n${systemPrompt}`
-          : "You are Pi, a coding agent.",
-        messageCount: messages.length,
-        pendingMessageCount: steeringQueue.length + followUpQueue.length
-      });
+    case "get_state": {
+      const respondWithState = () =>
+        response("get_state", request, {
+          model,
+          thinkingLevel,
+          isStreaming: streaming,
+          isCompacting: false,
+          sessionFile,
+          sessionId,
+          sessionName: "Fake Pi",
+          systemPrompt: systemPrompt
+            ? `You are Pi, a coding agent.\n\n${systemPrompt}`
+            : "You are Pi, a coding agent.",
+          messageCount: messages.length,
+          pendingMessageCount: steeringQueue.length + followUpQueue.length
+        });
+      const delay = Number(process.env.PI_WEB_FAKE_START_DELAY_MS || 0);
+      if (!delayedInitialState && delay > 0) {
+        delayedInitialState = true;
+        setTimeout(respondWithState, delay);
+      } else {
+        respondWithState();
+      }
       break;
+    }
     case "get_messages":
       response("get_messages", request, { messages });
       break;
@@ -264,8 +274,21 @@ function runTurn(text) {
       },
       stopReason: "stop"
     };
-    appendMessage(message);
-    send({ type: "message_end", message });
+    if (text.includes("event-before-persist")) {
+      // Match Pi's real ordering: listeners see message_end before
+      // SessionManager appends the finalized message. Blocking here makes the
+      // cross-process race deterministic while queued RPC commands remain a
+      // valid persistence barrier.
+      send({ type: "message_end", message });
+      const persistAfter = Date.now() + 40;
+      while (Date.now() < persistAfter) {
+        // Intentionally hold the fake Pi event handler.
+      }
+      appendMessage(message);
+    } else {
+      appendMessage(message);
+      send({ type: "message_end", message });
+    }
     send({ type: "turn_end", message });
     send({ type: "agent_end", messages });
     continueQueuedTurn();

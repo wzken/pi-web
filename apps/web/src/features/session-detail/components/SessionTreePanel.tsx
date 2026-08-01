@@ -97,6 +97,16 @@ export function buildSessionTreeRows(
   }));
 }
 
+export function hasSessionTreeBranches(tree: SessionTreeSnapshot): boolean {
+  const seenParents = new Set<string>();
+  for (const node of tree.nodes) {
+    if (!node.parentId) continue;
+    if (seenParents.has(node.parentId)) return true;
+    seenParents.add(node.parentId);
+  }
+  return false;
+}
+
 function branchDepth(
   node: SessionTreeNode,
   byId: Map<string, SessionTreeNode>,

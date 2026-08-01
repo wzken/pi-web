@@ -1,100 +1,197 @@
 import {
-  Image,
+  Check,
+  Image as ImageIcon,
   Link2,
   Monitor,
   Moon,
-  PackageOpen,
   Palette,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Sun,
   Trash2,
   Upload
 } from "lucide-react";
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode
 } from "react";
-import type {
-  InstalledTheme,
-  ThemeCatalog,
-  ThemePreferences
-} from "@pi-web/protocol";
-import { Button, ErrorBanner, LoadingSpinner, useToast } from "./components";
+import type { ThemePreferences } from "@pi-web/protocol";
 import {
-  themeSchemeLabel,
-  themeSupportsColorScheme,
-  themeTokensForScheme,
-  useTheme
+  Button,
+  ErrorBanner,
+  LoadingSpinner,
+  Switch,
+  useToast
+} from "./components";
+import {
+  defaultMaterialThemeSettings,
+  themeColorPresets,
+  useTheme,
+  type MaterialThemeSettings,
+  type ThemeColorRole
 } from "./theme";
+import { extractThemeSeedColors } from "./theme-customization";
 import { t } from "./i18n";
 import { ui } from "./ui";
+import styles from "./pages/SettingsPage.module.css";
+
+const colorRoles: ReadonlyArray<{
+  role: ThemeColorRole;
+  label: string;
+  description: string;
+}> = [
+  {
+    role: "primary",
+    label: "主色",
+    description: "品牌、主要操作与焦点"
+  },
+  {
+    role: "secondary",
+    label: "次要色",
+    description: "辅助操作与选中状态"
+  },
+  {
+    role: "tertiary",
+    label: "第三色",
+    description: "强调、提示与高亮"
+  },
+  {
+    role: "neutral",
+    label: "中性色",
+    description: "背景、表面与边框"
+  }
+];
+
+type BackgroundSettings = ThemePreferences["background"];
+type BackgroundBusyState = "upload" | "remove" | "extract" | null;
+
+const maximumBackgroundBytes = 8 * 1024 * 1024;
+const acceptedBackgroundTypes = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/avif"
+]);
 
 export function ThemeSettings() {
   const {
     catalog,
+    activeTheme,
     loading,
     safeMode,
     resolvedColorScheme,
+    materialThemeSettings,
     previewPreferences,
     updatePreferences,
-    installTheme,
-    removeTheme,
+    previewMaterialThemeSettings,
     uploadBackground,
     removeBackground
   } = useTheme();
-  const [draft, setDraft] = useState<ThemePreferences | null>(null);
+  const [draftThemeId, setDraftThemeId] = useState<string | null>(null);
+  const [draftMode, setDraftMode] =
+    useState<ThemePreferences["colorMode"] | null>(null);
+  const [draftMaterial, setDraftMaterial] =
+    useState<MaterialThemeSettings | null>(null);
+  const [draftBackground, setDraftBackground] =
+    useState<BackgroundSettings | null>(null);
+  const [localBackgroundFile, setLocalBackgroundFile] = useState<File | null>(
+    null
+  );
+  const [backgroundBusy, setBackgroundBusy] =
+    useState<BackgroundBusyState>(null);
+  const [backgroundError, setBackgroundError] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
-  const [installing, setInstalling] = useState(false);
-  const [uploadingBackground, setUploadingBackground] = useState(false);
-  const [deletingTheme, setDeletingTheme] = useState(false);
-  const themeInput = useRef<HTMLInputElement>(null);
-  const backgroundInput = useRef<HTMLInputElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
   useEffect(() => {
-    if (catalog && draft === null) setDraft(catalog.preferences);
-  }, [catalog, draft]);
+    if (catalog) {
+      if (draftThemeId === null) {
+        setDraftThemeId(catalog.preferences.themeId);
+      }
+      if (draftMode === null) {
+        setDraftMode(catalog.preferences.colorMode);
+      }
+    }
+  }, [catalog, draftMode, draftThemeId]);
 
   useEffect(() => {
-    if (!draft || safeMode) return;
-    previewPreferences(draft);
-    return () => previewPreferences(null);
-  }, [draft, previewPreferences, safeMode]);
+    if (draftMaterial === null) {
+      setDraftMaterial(materialThemeSettings);
+    }
+  }, [draftMaterial, materialThemeSettings]);
 
-  const selectedTheme = useMemo(
-    () => catalog?.themes.find((theme) => theme.id === draft?.themeId) ?? null,
-    [catalog, draft?.themeId]
-  );
-  const previewUrl = backgroundPreviewUrl(catalog, selectedTheme, draft);
+  useEffect(() => {
+    if (catalog && draftBackground === null) {
+      setDraftBackground(catalog.preferences.background);
+    }
+  }, [catalog, draftBackground]);
 
-  function selectColorMode(colorMode: ThemePreferences["colorMode"]) {
-    if (!draft) return;
-    const targetScheme =
-      colorMode === "system" ? resolvedColorScheme : colorMode;
-    const matchingTheme =
-      selectedTheme &&
-      themeSupportsColorScheme(selectedTheme, targetScheme)
-        ? selectedTheme
-        : catalog?.themes.find((theme) => theme.id === `agegr-${targetScheme}`);
-    setDraft({
-      ...draft,
-      colorMode,
-      themeId: matchingTheme?.id ?? draft.themeId
+  useEffect(() => {
+    if (
+      !catalog ||
+      !draftThemeId ||
+      !draftMode ||
+      !draftBackground ||
+      safeMode
+    ) {
+      return;
+    }
+    previewPreferences({
+      ...catalog.preferences,
+      themeId: draftThemeId,
+      colorMode: draftMode,
+      background: draftBackground
     });
-  }
+    return () => previewPreferences(null);
+  }, [
+    catalog,
+    draftBackground,
+    draftMode,
+    draftThemeId,
+    previewPreferences,
+    safeMode
+  ]);
+
+  useEffect(() => {
+    if (!draftMaterial || safeMode) return;
+    previewMaterialThemeSettings(draftMaterial);
+    return () => previewMaterialThemeSettings(null);
+  }, [draftMaterial, previewMaterialThemeSettings, safeMode]);
 
   async function saveAppearance() {
-    if (!draft || saving || safeMode) return;
+    if (
+      !catalog ||
+      !draftThemeId ||
+      !draftMode ||
+      !draftMaterial ||
+      !draftBackground ||
+      saving ||
+      safeMode
+    ) {
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const next = await updatePreferences(draft);
-      setDraft(next.preferences);
+      assertBackgroundReady(draftBackground, catalog.userBackgroundUrl);
+      const next = await updatePreferences({
+        ...catalog.preferences,
+        themeId: draftThemeId,
+        colorMode: draftMode,
+        background: draftBackground,
+        materialTheme: draftMaterial
+      });
+      setDraftThemeId(next.preferences.themeId);
+      setDraftMode(next.preferences.colorMode);
+      setDraftBackground(next.preferences.background);
+      setDraftMaterial(next.preferences.materialTheme);
       toast.push(t("外观已应用"));
     } catch (reason) {
       setError(reason);
@@ -103,529 +200,690 @@ export function ThemeSettings() {
     }
   }
 
-  async function handleThemeArchive(file: File | undefined) {
-    if (!file || installing) return;
-    setInstalling(true);
-    setError(null);
-    try {
-      const knownIds = new Set(catalog?.themes.map((theme) => theme.id) ?? []);
-      const next = await installTheme(file);
-      const installed =
-        next.themes.find(
-          (theme) => theme.source === "uploaded" && !knownIds.has(theme.id)
-        ) ??
-        next.themes.find(
-          (theme) =>
-            theme.source === "uploaded" &&
-            theme.name.toLowerCase() === file.name.replace(/\.zip$/i, "").toLowerCase()
-        );
-      if (installed && draft) setDraft({ ...draft, themeId: installed.id });
-      toast.push(
-        installed
-          ? t("已安装 {{name}}", { name: installed.name })
-          : t("主题包已更新")
-      );
-    } catch (reason) {
-      setError(reason);
-    } finally {
-      setInstalling(false);
-      if (themeInput.current) themeInput.current.value = "";
-    }
+  function restoreDefaults() {
+    if (safeMode) return;
+    setDraftThemeId("pi-neutral");
+    setDraftMode("system");
+    setDraftMaterial({
+      ...defaultMaterialThemeSettings,
+      colors: { ...defaultMaterialThemeSettings.colors }
+    });
+    setDraftBackground(defaultBackgroundSettings());
+    setLocalBackgroundFile(null);
+    setBackgroundError(null);
   }
 
-  async function handleBackground(file: File | undefined) {
-    if (!file || uploadingBackground || !draft) return;
-    setUploadingBackground(true);
-    setError(null);
+  function updateColor(role: ThemeColorRole, color: string) {
+    if (!draftMaterial || !/^#[\da-f]{6}$/i.test(color)) return;
+    setDraftMaterial({
+      ...draftMaterial,
+      enabled: true,
+      presetId: null,
+      colors: {
+        ...draftMaterial.colors,
+        [role]: color.toUpperCase()
+      }
+    });
+  }
+
+  function updateBackground(value: Partial<BackgroundSettings>) {
+    if (!draftBackground || safeMode) return;
+    setDraftBackground({ ...draftBackground, ...value });
+    setBackgroundError(null);
+  }
+
+  async function handleBackgroundUpload(file: File | undefined) {
+    if (!file || backgroundBusy || safeMode) return;
+    setBackgroundBusy("upload");
+    setBackgroundError(null);
     try {
+      validateBackgroundFile(file);
       await uploadBackground(file);
-      setDraft({
-        ...draft,
-        background: { ...draft.background, kind: "upload", url: "" }
+      setLocalBackgroundFile(file);
+      setDraftBackground({
+        ...(draftBackground ?? defaultBackgroundSettings()),
+        kind: "upload",
+        url: ""
       });
-      toast.push(t("背景图片已上传，点击“应用外观”生效"));
+      toast.push(t("背景图片已上传，可继续调整显示方式"));
     } catch (reason) {
-      setError(reason);
+      setBackgroundError(reason);
     } finally {
-      setUploadingBackground(false);
-      if (backgroundInput.current) backgroundInput.current.value = "";
+      setBackgroundBusy(null);
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
     }
   }
 
-  async function deleteSelectedTheme() {
+  async function handleBackgroundRemoval() {
+    if (backgroundBusy || safeMode) return;
+    setBackgroundBusy("remove");
+    setBackgroundError(null);
+    try {
+      await removeBackground();
+      setLocalBackgroundFile(null);
+      setDraftBackground({
+        ...(draftBackground ?? defaultBackgroundSettings()),
+        kind: "none",
+        url: ""
+      });
+      toast.push(t("背景图片已移除"));
+    } catch (reason) {
+      setBackgroundError(reason);
+    } finally {
+      setBackgroundBusy(null);
+    }
+  }
+
+  async function extractBackgroundColors() {
     if (
-      !selectedTheme ||
-      selectedTheme.source !== "uploaded" ||
-      deletingTheme ||
-      !confirm(t("删除主题包“{{name}}”？主题文件将从服务器移除。", {
-        name: selectedTheme.name
-      }))
+      !draftBackground ||
+      !draftMaterial ||
+      backgroundBusy ||
+      safeMode
     ) {
       return;
     }
-    setDeletingTheme(true);
-    setError(null);
+    setBackgroundBusy("extract");
+    setBackgroundError(null);
     try {
-      const next = await removeTheme(selectedTheme.id);
-      setDraft(next.preferences);
-      toast.push(t("主题包已删除"));
+      const source = backgroundExtractionSource(
+        draftBackground,
+        localBackgroundFile,
+        catalog?.userBackgroundUrl,
+        activeTheme?.backgroundUrl
+      );
+      const colors = await extractColorsFromImage(source);
+      setDraftMaterial({
+        ...draftMaterial,
+        enabled: true,
+        presetId: null,
+        colors
+      });
+      toast.push(t("已从背景提取四色，可继续单独微调"));
     } catch (reason) {
-      setError(reason);
+      setBackgroundError(reason);
     } finally {
-      setDeletingTheme(false);
-    }
-  }
-
-  async function clearUploadedBackground() {
-    if (!draft || uploadingBackground) return;
-    setUploadingBackground(true);
-    setError(null);
-    try {
-      const next = await removeBackground();
-      setDraft(next.preferences);
-      toast.push(t("已移除上传的背景"));
-    } catch (reason) {
-      setError(reason);
-    } finally {
-      setUploadingBackground(false);
+      setBackgroundBusy(null);
     }
   }
 
   if (loading && !catalog) {
     return (
-      <article className={ui("panel settings-section theme-settings")}>
-        <div className={ui("settings-icon")}><Palette size={19} /></div>
-        <div className={ui("settings-content theme-loading")}>
-          <LoadingSpinner size={17} />
+      <section className={styles.appearanceCard} aria-labelledby="appearance-title">
+        <div className={styles.loadingState}>
+          <LoadingSpinner size={18} />
           <span>{t("读取主题")}</span>
         </div>
-      </article>
+      </section>
     );
   }
-  if (!catalog || !draft) return null;
+
+  if (
+    !catalog ||
+    !draftThemeId ||
+    !draftMode ||
+    !draftMaterial ||
+    !draftBackground
+  ) {
+    return null;
+  }
+
+  const backgroundPreviewUrl = resolveBackgroundPreviewUrl(
+    draftBackground,
+    catalog.userBackgroundUrl,
+    activeTheme?.backgroundUrl
+  );
+  const supportsThemeBackground = Boolean(activeTheme?.backgroundUrl);
 
   return (
-    <article className={ui("panel settings-section theme-settings")}>
-      <div className={ui("settings-icon")}><Palette size={19} /></div>
-      <div className={ui("settings-content")}>
-        <div className={ui("settings-heading theme-heading")}>
+    <section
+      id="appearance"
+      className={styles.appearanceCard}
+      aria-labelledby="appearance-title"
+    >
+      <div className={styles.sectionHeading}>
+        <span className={styles.sectionIcon} aria-hidden="true">
+          <Palette size={20} />
+        </span>
+        <div>
+          <h2 id="appearance-title">{t("外观")}</h2>
+          <p>{t("选择显示模式，并用四个关键颜色定义整个工作区。")}</p>
+        </div>
+      </div>
+
+      {safeMode && (
+        <div className={styles.safeModeBanner}>
+          <ShieldCheck size={18} aria-hidden="true" />
           <div>
-            <h2>{t("外观与主题包")}</h2>
-            <p>{t("主题可覆盖设计 token、组件 CSS、字体和背景；内置 Agegr Light / Dark。")}</p>
-          </div>
-          <span className={ui("theme-security-note")}>
-            <ShieldCheck size={14} />
-            {t("声明式包，不执行脚本")}
-          </span>
-        </div>
-
-        {safeMode && (
-          <div className={ui("theme-safe-banner")}>
-            <ShieldCheck size={17} />
-            <div>
-              <strong>{t("安全主题模式已开启")}</strong>
-              <span>{t("当前强制使用内置主题，并忽略主题 CSS 与背景。")}</span>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                window.location.href = window.location.pathname;
-              }}
-            >
-              {t("退出安全模式")}
-            </Button>
-          </div>
-        )}
-
-        {error !== null && (
-          <ErrorBanner error={error} onDismiss={() => setError(null)} />
-        )}
-
-        <div className={ui("theme-subsection")}>
-          <div className={ui("theme-subheading")}>
-            <div>
-              <h3>{t("配色模式")}</h3>
-              <p>
-                {t("双模式主题会在同一主题内切换；单模式主题不匹配时使用对应的内置 Agegr 配色。")}
-              </p>
-            </div>
-          </div>
-          <div className={ui("theme-mode-picker")} role="radiogroup" aria-label={t("配色模式")}>
-            <ColorModeChoice
-              label={t("自动")}
-              description={t("当前{{scheme}}", {
-                scheme: resolvedColorScheme === "dark" ? t("深色") : t("浅色")
-              })}
-              value="system"
-              checked={draft.colorMode === "system"}
-              icon={<Monitor size={16} />}
-              onSelect={() => selectColorMode("system")}
-            />
-            <ColorModeChoice
-              label={t("浅色")}
-              description={t("始终浅色")}
-              value="light"
-              checked={draft.colorMode === "light"}
-              icon={<Sun size={16} />}
-              onSelect={() => selectColorMode("light")}
-            />
-            <ColorModeChoice
-              label={t("深色")}
-              description={t("始终深色")}
-              value="dark"
-              checked={draft.colorMode === "dark"}
-              icon={<Moon size={16} />}
-              onSelect={() => selectColorMode("dark")}
-            />
+            <strong>{t("安全主题模式已开启")}</strong>
+            <span>{t("当前强制使用内置主题，并忽略主题 CSS 与背景。")}</span>
           </div>
         </div>
+      )}
 
-        <div className={ui("theme-subsection")}>
-          <div className={ui("theme-subheading")}>
+      {error !== null && (
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
+      )}
+
+      <div className={styles.settingBlock}>
+        <div className={styles.blockHeading}>
+          <h3>{t("配色模式")}</h3>
+          <p>
+            {draftMode === "system"
+              ? t("当前{{scheme}}", {
+                  scheme:
+                    resolvedColorScheme === "dark" ? t("深色") : t("浅色")
+                })
+              : draftMode === "dark"
+                ? t("始终深色")
+                : t("始终浅色")}
+          </p>
+        </div>
+        <div
+          className={styles.segmentedControl}
+          role="radiogroup"
+          aria-label={t("配色模式")}
+        >
+          <ModeChoice
+            label={t("跟随系统")}
+            value="system"
+            checked={draftMode === "system"}
+            icon={<Monitor size={18} />}
+            onSelect={() => setDraftMode("system")}
+          />
+          <ModeChoice
+            label={t("浅色")}
+            value="light"
+            checked={draftMode === "light"}
+            icon={<Sun size={18} />}
+            onSelect={() => setDraftMode("light")}
+          />
+          <ModeChoice
+            label={t("深色")}
+            value="dark"
+            checked={draftMode === "dark"}
+            icon={<Moon size={18} />}
+            onSelect={() => setDraftMode("dark")}
+          />
+        </div>
+      </div>
+
+      <div className={styles.settingBlock}>
+        <div className={styles.blockHeading}>
+          <h3>{t("主题包")}</h3>
+          <p>
+            {t(
+              "主题包继续提供字体、圆角与组件细节；自定义四色仅覆盖颜色。"
+            )}
+          </p>
+        </div>
+        <label className={styles.themePackageField}>
+          <span>{t("选择已安装主题")}</span>
+          <select
+            value={draftThemeId}
+            disabled={safeMode}
+            onChange={(event) => setDraftThemeId(event.currentTarget.value)}
+          >
+            {catalog.themes.map((theme) => (
+              <option value={theme.id} key={theme.id}>
+                {theme.name} ·{" "}
+                {theme.source === "built-in" ? t("内置") : t("已上传")}
+              </option>
+            ))}
+          </select>
+          {activeTheme?.description && <small>{activeTheme.description}</small>}
+        </label>
+      </div>
+
+      <div className={styles.settingBlock}>
+        <div className={styles.blockHeading}>
+          <h3>{t("背景图片")}</h3>
+          <p>{t("使用本地图片或图片链接，并实时预览裁切与遮罩。")}</p>
+        </div>
+
+        <div
+          className={styles.backgroundSourceGrid}
+          role="radiogroup"
+          aria-label={t("背景来源")}
+        >
+          <BackgroundChoice
+            label={t("无背景")}
+            checked={draftBackground.kind === "none"}
+            icon={<ImageIcon size={18} />}
+            disabled={safeMode}
+            onSelect={() => updateBackground({ kind: "none" })}
+          />
+          <BackgroundChoice
+            label={t("本地图片")}
+            checked={draftBackground.kind === "upload"}
+            icon={<Upload size={18} />}
+            disabled={safeMode}
+            onSelect={() => {
+              if (catalog.userBackgroundUrl) {
+                updateBackground({ kind: "upload", url: "" });
+              } else {
+                uploadInputRef.current?.click();
+              }
+            }}
+          />
+          <BackgroundChoice
+            label={t("图片链接")}
+            checked={draftBackground.kind === "url"}
+            icon={<Link2 size={18} />}
+            disabled={safeMode}
+            onSelect={() => updateBackground({ kind: "url" })}
+          />
+          {supportsThemeBackground && (
+            <BackgroundChoice
+              label={t("主题自带")}
+              checked={draftBackground.kind === "theme"}
+              icon={<Palette size={18} />}
+              disabled={safeMode}
+              onSelect={() => updateBackground({ kind: "theme", url: "" })}
+            />
+          )}
+        </div>
+
+        <input
+          ref={uploadInputRef}
+          className={styles.hiddenFileInput}
+          type="file"
+          accept={[...acceptedBackgroundTypes].join(",")}
+          tabIndex={-1}
+          aria-hidden="true"
+          disabled={safeMode || backgroundBusy !== null}
+          onChange={(event) =>
+            void handleBackgroundUpload(event.currentTarget.files?.[0])
+          }
+        />
+
+        {draftBackground.kind === "upload" && (
+          <div className={styles.backgroundSourcePanel}>
             <div>
-              <h3>{t("主题")}</h3>
-              <p>{t("内置主题不可删除；上传同 ID 的 ZIP 可更新已安装主题。")}</p>
+              <strong>
+                {catalog.userBackgroundUrl
+                  ? t("已上传背景图片")
+                  : t("尚未上传图片")}
+              </strong>
+              <span>{t("支持 PNG、JPEG、WebP、GIF、AVIF，最大 8 MB。")}</span>
             </div>
-            <div className={ui("theme-actions")}>
-              <input
-                ref={themeInput}
-                className={ui("visually-hidden")}
-                type="file"
-                accept=".zip,application/zip,application/x-zip-compressed"
-                onChange={(event) =>
-                  void handleThemeArchive(event.target.files?.[0])
-                }
-              />
+            <div className={styles.backgroundSourceActions}>
               <Button
                 type="button"
-                size="sm"
                 variant="secondary"
-                loading={installing}
-                loadingLabel={t("安装中…")}
-                onClick={() => themeInput.current?.click()}
+                size="sm"
+                loading={backgroundBusy === "upload"}
+                disabled={safeMode || backgroundBusy !== null}
+                onClick={() => uploadInputRef.current?.click()}
               >
                 <Upload size={15} />
-                {t("上传 ZIP 主题包")}
+                {catalog.userBackgroundUrl ? t("替换图片") : t("选择图片")}
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={selectedTheme?.source !== "uploaded"}
-                loading={deletingTheme}
-                loadingLabel={t("删除中…")}
-                onClick={() => void deleteSelectedTheme()}
-              >
-                <Trash2 size={15} />
-                {t("删除")}
-              </Button>
+              {catalog.userBackgroundUrl && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  loading={backgroundBusy === "remove"}
+                  disabled={safeMode || backgroundBusy !== null}
+                  onClick={() => void handleBackgroundRemoval()}
+                >
+                  <Trash2 size={15} />
+                  {t("移除")}
+                </Button>
+              )}
             </div>
           </div>
+        )}
 
-          <div className={ui("theme-picker")} role="radiogroup" aria-label={t("选择主题")}>
-            {catalog.themes.map((theme) => (
-              <ThemeChoice
-                key={theme.id}
-                theme={theme}
-                checked={draft.themeId === theme.id}
-                colorScheme={resolvedColorScheme}
-                onSelect={() =>
-                  setDraft({
-                    ...draft,
-                    themeId: theme.id,
-                    colorMode: themeSupportsColorScheme(
-                      theme,
-                      resolvedColorScheme
-                    )
-                      ? draft.colorMode
-                      : theme.schemaVersion === 1
-                        ? theme.colorScheme
-                        : draft.colorMode
-                  })
-                }
-              />
-            ))}
-          </div>
-        </div>
+        {draftBackground.kind === "url" && (
+          <label className={styles.backgroundUrlField}>
+            <span>{t("图片链接")}</span>
+            <input
+              type="url"
+              inputMode="url"
+              value={draftBackground.url}
+              placeholder="https://example.com/background.jpg"
+              disabled={safeMode}
+              aria-invalid={
+                draftBackground.url.length > 0 &&
+                !isRemoteBackgroundUrl(draftBackground.url)
+              }
+              onChange={(event) =>
+                updateBackground({ url: event.currentTarget.value })
+              }
+            />
+            <small>
+              {t("仅保存 http/https 地址；取色由浏览器直连，不经过服务器代理。")}
+            </small>
+          </label>
+        )}
 
-        <div className={ui("theme-subsection")}>
-          <div className={ui("theme-subheading")}>
-            <div>
-              <h3>{t("工作区背景")}</h3>
-              <p>{t("背景位于界面底层；主题仍负责面板透明度和文字对比度。")}</p>
+        {draftBackground.kind !== "none" && (
+          <>
+            <div
+              className={styles.backgroundPreview}
+              data-empty={backgroundPreviewUrl ? undefined : "true"}
+              role="img"
+              aria-label={t("背景预览")}
+            >
+              {backgroundPreviewUrl ? (
+                <>
+                  <span
+                    className={styles.backgroundPreviewImage}
+                    style={{
+                      backgroundImage: `url(${JSON.stringify(
+                        backgroundPreviewUrl
+                      )})`,
+                      backgroundPosition: draftBackground.position,
+                      backgroundRepeat:
+                        draftBackground.fit === "tile" ? "repeat" : "no-repeat",
+                      backgroundSize:
+                        draftBackground.fit === "tile"
+                          ? "auto"
+                          : draftBackground.fit,
+                      filter: `blur(${draftBackground.blur}px)`
+                    }}
+                  />
+                  <span
+                    className={styles.backgroundPreviewOverlay}
+                    style={{
+                      opacity: draftBackground.overlay
+                    }}
+                  />
+                </>
+              ) : (
+                <span className={styles.backgroundPreviewEmpty}>
+                  {draftBackground.kind === "url"
+                    ? t("输入有效链接后显示预览")
+                    : t("选择图片后显示预览")}
+                </span>
+              )}
             </div>
-          </div>
 
-          <div className={ui("background-editor")}>
-            <div className={ui("background-controls")}>
-              <label className={ui("field")}>
-                <span>{t("背景来源")}</span>
+            <div className={styles.backgroundTuningGrid}>
+              <label>
+                <span>{t("填充方式")}</span>
                 <select
-                  value={draft.background.kind}
+                  value={draftBackground.fit}
+                  disabled={safeMode}
                   onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      background: {
-                        ...draft.background,
-                        kind: event.target.value as ThemePreferences["background"]["kind"]
-                      }
+                    updateBackground({
+                      fit: event.currentTarget
+                        .value as BackgroundSettings["fit"]
                     })
                   }
                 >
-                  <option value="none">{t("无背景图片")}</option>
-                  <option
-                    value="theme"
-                    disabled={!selectedTheme?.backgroundUrl}
-                  >
-                    {t("主题包自带背景")}
-                  </option>
-                  <option value="upload">{t("上传到本机")}</option>
-                  <option value="url">{t("图片 URL")}</option>
+                  <option value="cover">{t("覆盖")}</option>
+                  <option value="contain">{t("完整显示")}</option>
+                  <option value="tile">{t("平铺")}</option>
                 </select>
               </label>
-
-              {draft.background.kind === "url" && (
-                <label className={ui("field")}>
-                  <span><Link2 size={14} /> {t("图片 URL")}</span>
-                  <input
-                    type="url"
-                    value={draft.background.url}
-                    placeholder="https://example.com/background.webp"
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        background: {
-                          ...draft.background,
-                          url: event.target.value
-                        }
-                      })
-                    }
-                  />
-                </label>
-              )}
-
-              {draft.background.kind === "upload" && (
-                <div className={ui("background-upload-row")}>
-                  <input
-                    ref={backgroundInput}
-                    className={ui("visually-hidden")}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
-                    onChange={(event) =>
-                      void handleBackground(event.target.files?.[0])
-                    }
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    loading={uploadingBackground}
-                    loadingLabel={t("上传中…")}
-                    onClick={() => backgroundInput.current?.click()}
-                  >
-                    <Image size={15} />
-                    {catalog.userBackgroundUrl ? t("更换图片") : t("上传图片")}
-                  </Button>
-                  {catalog.userBackgroundUrl && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void clearUploadedBackground()}
-                    >
-                      <Trash2 size={15} />
-                      {t("移除图片")}
-                    </Button>
-                  )}
-                  <span>{t("PNG / JPEG / WebP / GIF / AVIF，最大 8 MB")}</span>
-                </div>
-              )}
-
-              {draft.background.kind !== "none" && (
-                <div className={ui("background-options")}>
-                  <label className={ui("field")}>
-                    <span>{t("填充方式")}</span>
-                    <select
-                      value={draft.background.fit}
-                      disabled={draft.background.kind === "theme"}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          background: {
-                            ...draft.background,
-                            fit: event.target.value as ThemePreferences["background"]["fit"]
-                          }
-                        })
-                      }
-                    >
-                      <option value="cover">{t("覆盖")}</option>
-                      <option value="contain">{t("完整显示")}</option>
-                      <option value="tile">{t("平铺")}</option>
-                    </select>
-                  </label>
-                  <label className={ui("field")}>
-                    <span>{t("位置")}</span>
-                    <select
-                      value={draft.background.position}
-                      disabled={draft.background.kind === "theme"}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          background: {
-                            ...draft.background,
-                            position: event.target.value
-                          }
-                        })
-                      }
-                    >
-                      <option value="center">{t("居中")}</option>
-                      <option value="top">{t("顶部")}</option>
-                      <option value="bottom">{t("底部")}</option>
-                      <option value="left">{t("左侧")}</option>
-                      <option value="right">{t("右侧")}</option>
-                    </select>
-                  </label>
-                  <label className={ui("field range-field")}>
-                    <span>{t("遮罩 {{value}}%", {
-                      value: Math.round(draft.background.overlay * 100)
-                    })}</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="0.9"
-                      step="0.02"
-                      value={draft.background.overlay}
-                      disabled={draft.background.kind === "theme"}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          background: {
-                            ...draft.background,
-                            overlay: Number(event.target.value)
-                          }
-                        })
-                      }
-                    />
-                  </label>
-                  <label className={ui("field range-field")}>
-                    <span>{t("模糊 {{value}}px", {
-                      value: draft.background.blur
-                    })}</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="24"
-                      step="1"
-                      value={draft.background.blur}
-                      disabled={draft.background.kind === "theme"}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          background: {
-                            ...draft.background,
-                            blur: Number(event.target.value)
-                          }
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-              )}
+              <label>
+                <span>{t("对齐位置")}</span>
+                <select
+                  value={knownBackgroundPosition(draftBackground.position)}
+                  disabled={safeMode}
+                  onChange={(event) =>
+                    updateBackground({ position: event.currentTarget.value })
+                  }
+                >
+                  <option value="center">{t("居中")}</option>
+                  <option value="top">{t("顶部")}</option>
+                  <option value="bottom">{t("底部")}</option>
+                  <option value="left">{t("左侧")}</option>
+                  <option value="right">{t("右侧")}</option>
+                </select>
+              </label>
+              <label className={styles.backgroundRange}>
+                <span>
+                  {t("遮罩")}
+                  <output>{Math.round(draftBackground.overlay * 100)}%</output>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="90"
+                  step="1"
+                  value={Math.round(draftBackground.overlay * 100)}
+                  disabled={safeMode}
+                  onChange={(event) =>
+                    updateBackground({
+                      overlay: Number(event.currentTarget.value) / 100
+                    })
+                  }
+                />
+              </label>
+              <label className={styles.backgroundRange}>
+                <span>
+                  {t("模糊")}
+                  <output>{draftBackground.blur}px</output>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="24"
+                  step="1"
+                  value={draftBackground.blur}
+                  disabled={safeMode}
+                  onChange={(event) =>
+                    updateBackground({
+                      blur: Number(event.currentTarget.value)
+                    })
+                  }
+                />
+              </label>
             </div>
 
-            <div
-              className={ui(`background-preview${previewUrl ? " has-image" : ""}`)}
-              style={backgroundPreviewStyle(previewUrl, draft, selectedTheme)}
-              aria-label={t("背景预览")}
-            >
-              <div className={ui("background-preview-window")}>
-                <span />
-                <span />
-                <span />
-                <strong>PI WEB</strong>
+            <div className={styles.extractColorRow}>
+              <div>
+                <strong>{t("从图片生成配色")}</strong>
+                <span>
+                  {t("提取结果会填入下方四个颜色，不会覆盖主题包文件。")}
+                </span>
               </div>
-              <div className={ui("background-preview-content")}>
-                <PackageOpen size={20} />
-                <span>{previewUrl ? t("背景预览") : t("未设置背景")}</span>
-              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={backgroundBusy === "extract"}
+                loadingLabel={t("提取中…")}
+                disabled={
+                  safeMode ||
+                  backgroundBusy !== null ||
+                  !backgroundPreviewUrl
+                }
+                onClick={() => void extractBackgroundColors()}
+              >
+                <Sparkles size={15} />
+                {t("提取主题色")}
+              </Button>
             </div>
+          </>
+        )}
+
+        {backgroundError !== null && (
+          <div className={styles.backgroundError}>
+            <ErrorBanner
+              error={backgroundError}
+              onDismiss={() => setBackgroundError(null)}
+            />
+            {backgroundPreviewUrl && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={safeMode || backgroundBusy !== null}
+                onClick={() => void extractBackgroundColors()}
+              >
+                {t("重试取色")}
+              </Button>
+            )}
           </div>
-        </div>
+        )}
+      </div>
 
-        <div className={ui("theme-footer")}>
+      <div className={styles.settingBlock}>
+        <div className={styles.blockHeading}>
+          <h3>{t("自定义颜色")}</h3>
+          <p>
+            {t(
+              "开启时四色覆盖主题包颜色；关闭后继续使用主题包原有配色。"
+            )}
+          </p>
+        </div>
+        <div className={styles.customColorToggle}>
           <div>
-            <strong>{selectedTheme?.name ?? t("未选择主题")}</strong>
+            <strong>{t("使用自定义颜色")}</strong>
             <span>
-              {selectedTheme?.source === "uploaded" ? t("上传主题") : t("内置主题")}
-              {selectedTheme ? ` · v${selectedTheme.version}` : ""}
-              {` · ${
-                draft.colorMode === "system"
-                  ? t("跟随系统")
-                  : draft.colorMode === "dark"
-                    ? t("深色")
-                    : t("浅色")
-              }`}
+              {draftMaterial.enabled
+                ? t("当前优先使用下方四色")
+                : t("当前使用主题包配色")}
             </span>
           </div>
-          <div className={ui("theme-actions")}>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={safeMode}
-              onClick={() =>
-                setDraft({
-                  ...catalog.preferences,
-                  themeId: "agegr-light",
-                  colorMode: "system",
-                  background: {
-                    ...catalog.preferences.background,
-                    kind: "none",
-                    url: ""
-                  }
-                })
-              }
-            >
-              <RotateCcw size={15} />
-              {t("恢复默认")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              loading={saving}
-              loadingLabel={t("应用中…")}
-              disabled={safeMode}
-              onClick={() => void saveAppearance()}
-            >
-              <Palette size={15} />
-              {t("应用外观")}
-            </Button>
-          </div>
+          <Switch
+            label={t("使用自定义颜色")}
+            checked={draftMaterial.enabled}
+            disabled={safeMode}
+            onClick={() =>
+              setDraftMaterial({
+                ...draftMaterial,
+                enabled: !draftMaterial.enabled
+              })
+            }
+          />
+        </div>
+        <div
+          className={styles.colorRoleList}
+          data-disabled={!draftMaterial.enabled ? "true" : undefined}
+        >
+          {colorRoles.map(({ role, label, description }) => {
+            const color = draftMaterial.colors[role];
+            const inputId = `theme-color-${role}`;
+            return (
+              <div className={styles.colorRoleRow} key={role}>
+                <label className={styles.colorRoleCopy} htmlFor={inputId}>
+                  <strong>{t(label)}</strong>
+                  <span>{t(description)}</span>
+                </label>
+                <label
+                  className={styles.colorWell}
+                  style={{ "--color-value": color } as CSSProperties}
+                  aria-label={t("选择{{name}}", { name: t(label) })}
+                >
+                  <input
+                    id={inputId}
+                    type="color"
+                    value={validColorValue(color)}
+                    disabled={safeMode || !draftMaterial.enabled}
+                    onChange={(event) => updateColor(role, event.target.value)}
+                  />
+                </label>
+                <input
+                  key={`${role}-${color}`}
+                  className={styles.hexInput}
+                  aria-label={t("{{name}}十六进制颜色", { name: t(label) })}
+                  defaultValue={color.toUpperCase()}
+                  disabled={safeMode || !draftMaterial.enabled}
+                  spellCheck={false}
+                  maxLength={7}
+                  pattern="#[0-9A-Fa-f]{6}"
+                  onBlur={(event) => {
+                    if (/^#[\da-f]{6}$/i.test(event.target.value)) {
+                      updateColor(role, event.target.value);
+                    } else {
+                      event.target.value = color.toUpperCase();
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
-    </article>
+
+      <div className={styles.settingBlock}>
+        <div className={styles.blockHeading}>
+          <h3>{t("预设色彩盘")}</h3>
+          <p>{t("选择一组协调色彩，也可以再单独微调。")}</p>
+        </div>
+        <div className={styles.paletteGrid}>
+          {themeColorPresets.map((preset) => {
+            const selected = draftMaterial.presetId === preset.id;
+            return (
+              <button
+                key={preset.id}
+                className={ui(
+                  styles.paletteChoice,
+                  selected && styles.paletteSelected
+                )}
+                type="button"
+                aria-pressed={selected}
+                aria-label={`${t(preset.label)}：${t(preset.description)}`}
+                disabled={safeMode || !draftMaterial.enabled}
+                onClick={() =>
+                  setDraftMaterial({
+                    enabled: true,
+                    colors: { ...preset.colors },
+                    presetId: preset.id
+                  })
+                }
+              >
+                <span className={styles.paletteSwatches} aria-hidden="true">
+                  {Object.values(preset.colors).map((color, index) => (
+                    <i key={`${preset.id}-${index}`} style={{ backgroundColor: color }} />
+                  ))}
+                </span>
+                <span>{t(preset.label)}</span>
+                {selected && <Check size={16} aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className={styles.appearanceActions}>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={safeMode}
+          onClick={restoreDefaults}
+        >
+          <RotateCcw size={16} />
+          {t("恢复默认")}
+        </Button>
+        <Button
+          type="button"
+          loading={saving}
+          loadingLabel={t("应用中…")}
+          disabled={safeMode}
+          onClick={() => void saveAppearance()}
+        >
+          {t("应用外观")}
+        </Button>
+      </div>
+    </section>
   );
 }
 
-function ColorModeChoice({
+function ModeChoice({
   label,
-  description,
   value,
   checked,
   icon,
   onSelect
 }: {
   label: string;
-  description: string;
   value: ThemePreferences["colorMode"];
   checked: boolean;
   icon: ReactNode;
   onSelect: () => void;
 }) {
   return (
-    <label className={ui(`theme-mode-choice${checked ? " is-selected" : ""}`)}>
+    <label className={checked ? styles.modeSelected : undefined}>
       <input
         type="radio"
         name="color-mode"
@@ -633,96 +891,219 @@ function ColorModeChoice({
         checked={checked}
         onChange={onSelect}
       />
-      <span className={ui("theme-mode-icon")}>{icon}</span>
-      <span>
-        <strong>{label}</strong>
-        <small>{description}</small>
-      </span>
+      <span aria-hidden="true">{icon}</span>
+      <strong>{label}</strong>
     </label>
   );
 }
 
-function ThemeChoice({
-  theme,
+function BackgroundChoice({
+  label,
   checked,
-  colorScheme,
+  icon,
+  disabled,
   onSelect
 }: {
-  theme: InstalledTheme;
+  label: string;
   checked: boolean;
-  colorScheme: "light" | "dark";
+  icon: ReactNode;
+  disabled: boolean;
   onSelect: () => void;
 }) {
-  const controlId = `theme-choice-${theme.id}`;
-  const tokens = themeTokensForScheme(
-    theme,
-    themeSupportsColorScheme(theme, colorScheme)
-      ? colorScheme
-      : theme.schemaVersion === 1
-        ? theme.colorScheme
-        : "light"
-  );
   return (
-    <label
-      className={ui(`theme-choice${checked ? " is-selected" : ""}`)}
-      htmlFor={controlId}
+    <button
+      type="button"
+      className={ui(
+        styles.backgroundSourceChoice,
+        checked && styles.backgroundSourceSelected
+      )}
+      role="radio"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onSelect}
     >
-      <input
-        id={controlId}
-        type="radio"
-        name="theme"
-        value={theme.id}
-        checked={checked}
-        onChange={onSelect}
-      />
-      <span
-        className={ui("theme-swatch")}
-        style={{
-          background: tokens["--bg"] ?? "#fff",
-          borderColor: tokens["--line"] ?? "#ddd",
-          color: tokens["--text"] ?? "#222"
-        }}
-      >
-        <i style={{ background: tokens["--panel"] ?? "#fff" }} />
-        <b style={{ background: tokens["--teal"] ?? "#397a6a" }} />
-      </span>
-      <span className={ui("theme-choice-copy")}>
-        <strong>{theme.name}</strong>
-        <small>
-          {theme.source === "built-in" ? t("内置") : t("已上传")} ·{" "}
-          {themeSchemeLabel(theme)}
-        </small>
-      </span>
-    </label>
+      <span aria-hidden="true">{icon}</span>
+      <strong>{label}</strong>
+      {checked && <Check size={15} aria-hidden="true" />}
+    </button>
   );
 }
 
-function backgroundPreviewUrl(
-  catalog: ThemeCatalog | null,
-  theme: InstalledTheme | null,
-  draft: ThemePreferences | null
-): string | undefined {
-  if (!catalog || !draft) return undefined;
-  if (draft.background.kind === "theme") return theme?.backgroundUrl;
-  if (draft.background.kind === "upload") return catalog.userBackgroundUrl;
-  if (draft.background.kind === "url") return draft.background.url || undefined;
-  return undefined;
+function defaultBackgroundSettings(): BackgroundSettings {
+  return {
+    kind: "none",
+    url: "",
+    fit: "cover",
+    position: "center",
+    overlay: 0.18,
+    blur: 0
+  };
 }
 
-function backgroundPreviewStyle(
-  url: string | undefined,
-  draft: ThemePreferences,
-  theme: InstalledTheme | null
-) {
-  if (!url) return undefined;
-  const themeBackground =
-    draft.background.kind === "theme" ? theme?.background : undefined;
-  const overlay = themeBackground?.overlay ?? draft.background.overlay;
-  const fit = themeBackground?.fit ?? draft.background.fit;
-  return {
-    backgroundImage: `linear-gradient(rgb(10 14 13 / ${overlay}), rgb(10 14 13 / ${overlay})), url(${JSON.stringify(url)})`,
-    backgroundSize: fit === "tile" ? "auto" : fit,
-    backgroundRepeat: fit === "tile" ? "repeat" : "no-repeat",
-    backgroundPosition: themeBackground?.position ?? draft.background.position
-  };
+function validateBackgroundFile(file: File): void {
+  if (!acceptedBackgroundTypes.has(file.type)) {
+    throw new Error(t("请选择 PNG、JPEG、WebP、GIF 或 AVIF 图片。"));
+  }
+  if (file.size <= 0 || file.size > maximumBackgroundBytes) {
+    throw new Error(t("背景图片必须小于 8 MB。"));
+  }
+}
+
+function isRemoteBackgroundUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function assertBackgroundReady(
+  background: BackgroundSettings,
+  uploadedUrl: string | undefined
+): void {
+  if (background.kind === "url" && !isRemoteBackgroundUrl(background.url)) {
+    throw new Error(t("请输入有效的 http 或 https 图片链接。"));
+  }
+  if (background.kind === "upload" && !uploadedUrl) {
+    throw new Error(t("请先选择并上传一张背景图片。"));
+  }
+}
+
+function resolveBackgroundPreviewUrl(
+  background: BackgroundSettings,
+  uploadedUrl: string | undefined,
+  themeUrl: string | undefined
+): string | null {
+  if (background.kind === "upload") return uploadedUrl ?? null;
+  if (background.kind === "theme") return themeUrl ?? null;
+  if (background.kind === "url" && isRemoteBackgroundUrl(background.url)) {
+    return background.url;
+  }
+  return null;
+}
+
+function backgroundExtractionSource(
+  background: BackgroundSettings,
+  localFile: File | null,
+  uploadedUrl: string | undefined,
+  themeUrl: string | undefined
+): File | string {
+  if (background.kind === "upload") {
+    if (localFile) return localFile;
+    if (uploadedUrl) return uploadedUrl;
+    throw new Error(t("请先选择并上传一张背景图片。"));
+  }
+  if (background.kind === "url") {
+    if (isRemoteBackgroundUrl(background.url)) return background.url;
+    throw new Error(t("请输入有效的 http 或 https 图片链接。"));
+  }
+  if (background.kind === "theme" && themeUrl) return themeUrl;
+  throw new Error(t("当前没有可用于取色的背景图片。"));
+}
+
+async function extractColorsFromImage(
+  source: File | string
+): Promise<MaterialThemeSettings["colors"]> {
+  const localObjectUrl = source instanceof File;
+  const sourceUrl = localObjectUrl ? URL.createObjectURL(source) : source;
+  try {
+    const image = await loadImageForColorExtraction(sourceUrl, !localObjectUrl);
+    const maximumDimension = 96;
+    const scale = Math.min(
+      1,
+      maximumDimension / Math.max(image.naturalWidth, image.naturalHeight)
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", {
+      alpha: true,
+      willReadFrequently: true
+    });
+    if (!context) {
+      throw new Error(t("当前浏览器无法分析图片颜色。"));
+    }
+    context.drawImage(image, 0, 0, width, height);
+    try {
+      return extractThemeSeedColors(
+        context.getImageData(0, 0, width, height)
+      );
+    } catch (reason) {
+      if (
+        reason instanceof DOMException &&
+        reason.name === "SecurityError"
+      ) {
+        throw new Error(
+          t("图片服务器未允许跨域取色；背景仍可使用，也可改用本地上传。")
+        );
+      }
+      throw reason;
+    }
+  } finally {
+    if (localObjectUrl) URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+async function loadImageForColorExtraction(
+  sourceUrl: string,
+  corsRequired: boolean
+): Promise<HTMLImageElement> {
+  return await new Promise((resolve, reject) => {
+    const image = new Image();
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      image.src = "";
+      reject(new Error(t("图片加载超时，请检查链接后重试。")));
+    }, 15_000);
+
+    const finish = (
+      action: () => void
+    ) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      action();
+    };
+    image.onload = () =>
+      finish(() => {
+        if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+          resolve(image);
+        } else {
+          reject(new Error(t("图片没有可读取的尺寸。")));
+        }
+      });
+    image.onerror = () =>
+      finish(() =>
+        reject(
+          new Error(
+            corsRequired
+              ? t(
+                  "无法读取远程图片；请确认链接可访问且图片服务器允许 CORS，或改用本地上传。"
+                )
+              : t("无法读取该图片，请换用受支持的图片格式。")
+          )
+        )
+      );
+    if (corsRequired) {
+      image.crossOrigin = "anonymous";
+      image.referrerPolicy = "no-referrer";
+    }
+    image.decoding = "async";
+    image.src = sourceUrl;
+  });
+}
+
+function knownBackgroundPosition(value: string): string {
+  return ["center", "top", "bottom", "left", "right"].includes(value)
+    ? value
+    : "center";
+}
+
+function validColorValue(color: string) {
+  return /^#[\da-f]{6}$/i.test(color) ? color : "#54545B";
 }

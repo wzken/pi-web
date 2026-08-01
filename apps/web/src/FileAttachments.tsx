@@ -9,6 +9,7 @@ import {
   type PendingImage
 } from "./ImageAttachments";
 import { t } from "./i18n";
+import { createMutationId } from "./mutation-id";
 import { ui } from "./ui";
 
 const maxFiles = 8;
@@ -134,6 +135,7 @@ export async function uploadAttachments(
       await api<UploadedAttachment>("/api/attachments", {
         method: "POST",
         ...jsonBody({
+          mutationId: item.id,
           cwd,
           name: item.name,
           data: await readFileAsBase64(item.file)
@@ -182,10 +184,7 @@ function appendGeneralFiles(
   return [
     ...current,
     ...selected.map((file) => ({
-      id:
-        typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`,
+      id: createMutationId(),
       file,
       name: file.name || "attachment",
       size: file.size

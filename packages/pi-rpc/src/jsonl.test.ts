@@ -47,4 +47,29 @@ describe("LfJsonlDecoder", () => {
     decoder.push(Buffer.from(`{"text":"${"x".repeat(40)}"}`));
     expect(errors[0]?.error.message).toContain("exceeds");
   });
+
+  it("rejects newline-terminated overlong records before parsing them", () => {
+    const { decoder, values, errors } = harness(16);
+    decoder.push(
+      Buffer.from(
+        `${JSON.stringify({ text: "界".repeat(20) })}\n${JSON.stringify({ ok: true })}\n`
+      )
+    );
+    decoder.end();
+
+    expect(values).toEqual([{ ok: true }]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.error.message).toContain("exceeds");
+  });
+
+  it("discards an overlong cross-chunk record through its LF boundary", () => {
+    const { decoder, values, errors } = harness(16);
+    decoder.push(Buffer.from(`{"text":"${"x".repeat(20)}`));
+    decoder.push(Buffer.from(`${"y".repeat(20)}"}\n{"ok":true}\n`));
+    decoder.end();
+
+    expect(values).toEqual([{ ok: true }]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.error.message).toContain("exceeds");
+  });
 });

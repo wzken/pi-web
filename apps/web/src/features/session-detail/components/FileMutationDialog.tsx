@@ -90,6 +90,7 @@ export function FileMutationDialog({
       labelledBy="file-mutation-title"
       onClose={onClose}
       className={ui("file-mutation-dialog")}
+      maxWidth={440}
     >
       <form onSubmit={submit}>
         <header className={ui("dialog-heading")}>

@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   Check,
-  LoaderCircle,
   MoreHorizontal,
   X
 } from "lucide-react";
@@ -13,23 +12,92 @@ import {
   useMemo,
   useRef,
   useState,
-  type ButtonHTMLAttributes,
   type AnchorHTMLAttributes,
+  type ButtonHTMLAttributes,
+  type ChangeEvent,
   type CSSProperties,
-  type FocusEvent as ReactFocusEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PropsWithChildren,
+  type Ref,
   type ReactNode
 } from "react";
+import type { Dialog as MduiDialogElement } from "mdui/components/dialog.js";
+import type { Dropdown as MduiDropdownElement } from "mdui/components/dropdown.js";
+import type { MenuItem as MduiMenuItemElement } from "mdui/components/menu-item.js";
+import type { Switch as MduiSwitchElement } from "mdui/components/switch.js";
 import { t } from "./i18n";
 import { localizedErrorMessage } from "./api";
+import { useMduiEvent } from "./mdui/events";
+import mduiStyles from "./mdui/mdui-bridge.module.css";
 import { Link } from "./router";
 import { ui } from "./ui";
 
 export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "toolbar" | "danger" | "link";
 export type ButtonSize = "sm" | "md" | "lg" | "icon";
 
-function controlClassName({
+const legacyButtonClassName = "button";
+const legacyButtonVariantClassNames: Record<ButtonVariant, string> = {
+  primary: "button-primary",
+  secondary: "button-secondary",
+  outline: "button-outline",
+  ghost: "button-ghost",
+  toolbar: "button-toolbar",
+  danger: "button-danger",
+  link: "button-link"
+};
+const legacyButtonSizeClassNames: Record<ButtonSize, string> = {
+  sm: "button-sm",
+  md: "button-md",
+  lg: "button-lg",
+  icon: "button-icon"
+};
+const legacyButtonFullClassName = "button-full";
+const legacyButtonIconClassName = "button-icon";
+const legacyIconButtonClassName = "icon-button";
+const legacyDialogClassName = "dialog";
+const legacyActiveClassName = "is-active";
+
+type MduiButtonHostProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant: "filled" | "tonal" | "outlined" | "text";
+  "full-width": boolean;
+  loading: boolean;
+};
+
+type MduiButtonIconHostProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant: "standard" | "filled" | "tonal" | "outlined";
+};
+
+type MduiSwitchHostProps = Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "role" | "aria-checked"
+> & {
+  ref?: Ref<MduiSwitchElement>;
+  role?: "switch";
+  checked: boolean;
+};
+
+type MduiMenuItemHostProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  ref?: Ref<MduiMenuItemElement>;
+  selected?: boolean;
+};
+
+// The MDUI JSX declarations model generic HTMLElement event handlers. These
+// host aliases retain the existing public React button contracts while the
+// runtime value remains the corresponding custom-element tag.
+const MduiButtonHost = "mdui-button" as unknown as (
+  props: MduiButtonHostProps
+) => ReactNode;
+const MduiButtonIconHost = "mdui-button-icon" as unknown as (
+  props: MduiButtonIconHostProps
+) => ReactNode;
+const MduiSwitchHost = "mdui-switch" as unknown as (
+  props: MduiSwitchHostProps
+) => ReactNode;
+const MduiMenuItemHost = "mdui-menu-item" as unknown as (
+  props: MduiMenuItemHostProps
+) => ReactNode;
+
+function linkControlClassName({
   variant,
   size,
   fullWidth,
@@ -43,6 +111,33 @@ function controlClassName({
   className?: string;
 }) {
   return `button button-${variant} button-${size}${fullWidth ? " button-full" : ""}${active ? " is-active" : ""} ${className ?? ""}`;
+}
+
+function joinClassNames(...values: Array<string | undefined>): string {
+  return values.filter(Boolean).join(" ");
+}
+
+function customElementProps<T extends object>(props: T): T {
+  return Object.fromEntries(
+    Object.entries(props).map(([key, value]) => [
+      key,
+      (key.startsWith("aria-") || key.startsWith("data-")) &&
+        typeof value === "boolean"
+        ? String(value)
+        : value
+    ])
+  ) as T;
+}
+
+function buttonVariant(
+  variant: ButtonVariant,
+  active: boolean | undefined
+): "filled" | "tonal" | "outlined" | "text" {
+  if (variant === "primary") return "filled";
+  if (variant === "secondary" || variant === "danger") return "tonal";
+  if (variant === "outline") return "outlined";
+  if (variant === "toolbar" && active) return "tonal";
+  return "text";
 }
 
 export function Button({
@@ -59,6 +154,7 @@ export function Button({
   children,
   disabled,
   style,
+  "aria-label": ariaLabel,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
@@ -71,24 +167,63 @@ export function Button({
   active?: boolean | undefined;
   tooltip?: string;
 }) {
+  const hasExplicitLabel = ariaLabel !== undefined;
   const control = (
-    <button
-      className={ui(controlClassName({ variant, size, fullWidth, active, className }))}
-      disabled={disabled || loading}
-      aria-busy={loading || undefined}
-      aria-pressed={active === undefined ? undefined : active}
-      data-loading={loading || undefined}
-      data-active={active || undefined}
-      style={style as CSSProperties}
-      {...props}
-    >
-      <span className={ui("button-content")}>{leftIcon}{children}{rightIcon}</span>
-      {loading && (
-        <span className={ui("button-loading")} aria-hidden="true">
-          <LoadingSpinner size={15} /><span>{loadingLabel}</span>
-        </span>
+    <MduiButtonHost
+      {...customElementProps(props)}
+      className={joinClassNames(
+        mduiStyles.button,
+        legacyButtonClassName,
+        legacyButtonVariantClassNames[variant],
+        legacyButtonSizeClassNames[size],
+        fullWidth ? legacyButtonFullClassName : undefined,
+        active ? legacyActiveClassName : undefined,
+        className
       )}
-    </button>
+      variant={buttonVariant(variant, active)}
+      full-width={fullWidth}
+      loading={loading}
+      type={props.type ?? "submit"}
+      disabled={disabled || loading}
+      aria-busy={loading ? "true" : undefined}
+      aria-pressed={active === undefined ? undefined : active ? "true" : "false"}
+      data-loading={loading ? "true" : undefined}
+      data-active={active ? "true" : undefined}
+      data-app-variant={variant}
+      data-app-size={size}
+      data-app-full-width={String(fullWidth)}
+      style={style as CSSProperties}
+    >
+      {loading ? (
+        <>
+          <span hidden aria-hidden="true">{leftIcon}{children}{rightIcon}</span>
+          <span
+            className={mduiStyles.buttonLoading}
+            role="status"
+            aria-hidden={hasExplicitLabel ? "true" : undefined}
+          >
+            {loadingLabel}
+          </span>
+          {hasExplicitLabel && (
+            <span className={mduiStyles.visuallyHidden}>{ariaLabel}</span>
+          )}
+        </>
+      ) : (
+        <>
+          {leftIcon && <span slot="icon" aria-hidden="true">{leftIcon}</span>}
+          <span
+            className={ui(mduiStyles.buttonContent, "button-content")}
+            aria-hidden={hasExplicitLabel ? "true" : undefined}
+          >
+            {children}
+          </span>
+          {rightIcon && <span slot="end-icon" aria-hidden="true">{rightIcon}</span>}
+          {hasExplicitLabel && (
+            <span className={mduiStyles.visuallyHidden}>{ariaLabel}</span>
+          )}
+        </>
+      )}
+    </MduiButtonHost>
   );
   return tooltip ? <Tooltip content={tooltip}>{control}</Tooltip> : control;
 }
@@ -119,7 +254,7 @@ export function ButtonLink({
     <Link
       {...props}
       to={to}
-      className={ui(controlClassName({ variant, size, fullWidth, active, className }))}
+      className={ui(linkControlClassName({ variant, size, fullWidth, active, className }))}
       aria-current={active ? "page" : undefined}
       data-active={active || undefined}
     >
@@ -129,9 +264,17 @@ export function ButtonLink({
   return tooltip ? <Tooltip content={tooltip}>{control}</Tooltip> : control;
 }
 
-export function Tooltip({ content, children }: { content: string; children: ReactNode }) {
+export function Tooltip({
+  content,
+  children,
+  slot
+}: {
+  content: string;
+  children: ReactNode;
+  slot?: string | undefined;
+}) {
   return (
-    <span className={ui("tooltip")}>
+    <span className={ui(mduiStyles.tooltip, "tooltip")} slot={slot}>
       {children}
       <span className={ui("tooltip-content")} role="tooltip">{content}</span>
     </span>
@@ -143,78 +286,72 @@ export function Dialog({
   labelledBy,
   onClose,
   className = "",
+  maxWidth,
   children
 }: {
   open: boolean;
   labelledBy: string;
   onClose: () => void;
   className?: string;
+  maxWidth?: string | number;
   children: ReactNode;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+  const dialogRef = useRef<MduiDialogElement>(null);
+  useMduiEvent(dialogRef, "close", (event) => {
+    const dialog = dialogRef.current;
+    // MDUI mutates its own `open` property before emitting this cancelable
+    // event. Keep the custom element open synchronously and let the owning
+    // React state decide whether the controlled dialog is unmounted.
+    event.preventDefault();
+    onClose();
+    if (dialogRef.current === dialog && dialog && !dialog.open) {
+      dialog.open = true;
+    }
+  });
 
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
-    const dialog = dialogRef.current;
-    dialog
-      ?.querySelector<HTMLElement>(
-        "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href]"
-      )
-      ?.focus();
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab" || !dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex='-1'])"
+    const focusFrame = window.requestAnimationFrame(() => {
+      dialogRef.current
+        ?.querySelector<HTMLElement>(
+          "[autofocus], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled), mdui-button:not([disabled]), mdui-button-icon:not([disabled]), mdui-switch:not([disabled]), [href]"
         )
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0]!;
-      const last = focusable.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
+        ?.focus({ preventScroll: true });
+    });
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
+      window.cancelAnimationFrame(focusFrame);
       previous?.focus();
     };
   }, [open]);
 
   if (!open) return null;
   return (
-    <div
-      className={ui("dialog-backdrop")}
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+    <mdui-dialog
+      ref={dialogRef}
+      className={mduiStyles.dialog}
+      open
+      close-on-esc
+      close-on-overlay-click
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={labelledBy}
+      style={
+        maxWidth === undefined
+          ? undefined
+          : ({
+              "--app-dialog-max-width":
+                typeof maxWidth === "number" ? `${maxWidth}px` : maxWidth
+            } as CSSProperties)
+      }
     >
       <div
-        ref={dialogRef}
-        className={ui(`dialog ${className}`)}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={labelledBy}
+        className={joinClassNames(legacyDialogClassName, className)}
+        style={{ boxSizing: "border-box", width: "100%", maxWidth: "100%" }}
       >
         {children}
       </div>
-    </div>
+    </mdui-dialog>
   );
 }
 
@@ -225,6 +362,10 @@ export function IconButton({
   size = "icon",
   active,
   children,
+  className = "",
+  disabled,
+  style,
+  slot,
   ...props
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> & {
   label: string;
@@ -233,15 +374,51 @@ export function IconButton({
   size?: Extract<ButtonSize, "sm" | "md" | "icon">;
   active?: boolean | undefined;
 }) {
-  return (
-    <Tooltip content={tooltip}>
-      <Button {...props} aria-label={label} variant={variant} size={size} active={active}>{children}</Button>
-    </Tooltip>
+  const control = (
+    <MduiButtonIconHost
+      {...customElementProps(props)}
+      className={joinClassNames(
+        mduiStyles.iconButton,
+        legacyButtonClassName,
+        legacyButtonVariantClassNames[variant],
+        legacyButtonSizeClassNames[size],
+        legacyButtonIconClassName,
+        legacyIconButtonClassName,
+        active ? legacyActiveClassName : undefined,
+        className
+      )}
+      variant={
+        variant === "secondary" || variant === "toolbar" && active
+          ? "tonal"
+          : variant === "outline"
+            ? "outlined"
+            : variant === "danger"
+              ? "filled"
+              : "standard"
+      }
+      type={props.type ?? "button"}
+      disabled={disabled}
+      aria-pressed={active === undefined ? undefined : active ? "true" : "false"}
+      data-active={active ? "true" : undefined}
+      data-app-variant={variant}
+      data-app-size={size}
+      style={style as CSSProperties}
+    >
+      {children}
+      <span className={mduiStyles.visuallyHidden}>{label}</span>
+    </MduiButtonIconHost>
   );
+  return <Tooltip content={tooltip} slot={slot}>{control}</Tooltip>;
 }
 
 export function LoadingSpinner({ size = 18 }: { size?: number }) {
-  return <LoaderCircle size={size} className={ui("spin")} aria-hidden="true" />;
+  return (
+    <mdui-circular-progress
+      className={mduiStyles.progress}
+      aria-hidden="true"
+      style={{ width: size, height: size }}
+    />
+  );
 }
 
 export function Switch({
@@ -255,21 +432,38 @@ export function Switch({
   checked: boolean;
   loading?: boolean;
 }) {
+  const switchRef = useRef<MduiSwitchElement>(null);
+  const { onChange, onClick, disabled, ...switchProps } = props;
+
+  useMduiEvent(switchRef, "change", (event) => {
+    if (switchRef.current) switchRef.current.checked = checked;
+    onChange?.(event as unknown as ChangeEvent<HTMLButtonElement>);
+    // Do not attach React's onClick to the custom-element host: the composed
+    // shadow click can be observed twice by React. Preserve the existing
+    // Switch API by notifying legacy onClick consumers once from MDUI change.
+    onClick?.(event as unknown as ReactMouseEvent<HTMLButtonElement>);
+  });
+
   return (
-    <button
-      {...props}
-      type="button"
+    <MduiSwitchHost
+      {...customElementProps(switchProps)}
+      ref={switchRef}
       role="switch"
       aria-label={label}
-      aria-checked={checked}
-      aria-busy={loading || undefined}
-      disabled={props.disabled || loading}
-      className={ui(`switch${checked ? " is-checked" : ""} ${className}`)}
+      aria-checked={String(checked)}
+      aria-busy={loading ? "true" : undefined}
+      checked={checked}
+      disabled={disabled || loading}
+      className={joinClassNames(mduiStyles.switch, className)}
+      data-loading={loading ? "true" : undefined}
     >
-      <span className={ui("switch-thumb")}>
-        {loading && <LoadingSpinner size={10} />}
-      </span>
-    </button>
+      {loading && (
+        <>
+          <span slot="checked-icon"><LoadingSpinner size={10} /></span>
+          <span slot="unchecked-icon"><LoadingSpinner size={10} /></span>
+        </>
+      )}
+    </MduiSwitchHost>
   );
 }
 
@@ -283,85 +477,56 @@ export function ActionMenu({
   align?: "start" | "end";
 }) {
   const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    menuRef.current
-      ?.querySelector<HTMLButtonElement>(".action-menu-popover button:not(:disabled)")
-      ?.focus();
-    function closeOnOutside(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        menuRef.current?.querySelector<HTMLButtonElement>(".tooltip > button")?.focus();
+  const dropdownRef = useRef<MduiDropdownElement>(null);
+  useMduiEvent(dropdownRef, "open", () => setOpen(true));
+  useMduiEvent(dropdownRef, "close", () => setOpen(false));
+  useMduiEvent(dropdownRef, "closed", () => {
+    window.requestAnimationFrame(() => {
+      const dropdown = dropdownRef.current;
+      if (!dropdown) return;
+      const activeElement = document.activeElement;
+      // A menu action may intentionally move focus into a newly opened
+      // surface. Restore it only when it was left inside the now-hidden menu
+      // (or nowhere), which covers pointer selection without stealing focus.
+      if (
+        activeElement &&
+        activeElement !== document.body &&
+        activeElement !== document.documentElement &&
+        !dropdown.contains(activeElement)
+      ) {
+        return;
       }
-    }
-    document.addEventListener("pointerdown", closeOnOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  function closeOnBlur(event: ReactFocusEvent<HTMLDivElement>) {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      setOpen(false);
-    }
-  }
-
-  function moveMenuFocus(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        ".action-menu-item:not(:disabled)"
-      )
-    );
-    if (items.length === 0) return;
-    event.preventDefault();
-    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : event.key === "ArrowDown"
-            ? (currentIndex + 1) % items.length
-            : (currentIndex <= 0 ? items.length : currentIndex) - 1;
-    items[nextIndex]?.focus();
-  }
+      dropdown
+        .querySelector<HTMLElement>("mdui-button-icon")
+        ?.focus({ preventScroll: true });
+    });
+  });
 
   return (
-    <div
-      className={ui(`action-menu action-menu-${align}`)}
-      ref={menuRef}
-      onBlur={closeOnBlur}
-    >
-      <IconButton
-        label={label}
-        size="sm"
-        active={open}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-pressed={undefined}
-        onClick={() => setOpen((value) => !value)}
+    <div className={ui(`action-menu action-menu-${align}`)}>
+      <mdui-dropdown
+        ref={dropdownRef}
+        className={mduiStyles.dropdown}
+        trigger="click"
+        placement={align === "end" ? "bottom-end" : "bottom-start"}
+        open={open}
+        data-align={align}
       >
-        <MoreHorizontal size={15} />
-      </IconButton>
-      {open && (
-        <div
-          className={ui("action-menu-popover")}
-          role="menu"
-          tabIndex={-1}
-          onClick={() => setOpen(false)}
-          onKeyDown={moveMenuFocus}
+        <IconButton
+          slot="trigger"
+          label={label}
+          size="sm"
+          active={open}
+          aria-expanded={open ? "true" : "false"}
+          aria-haspopup="menu"
+          aria-pressed={undefined}
         >
+          <MoreHorizontal size={15} />
+        </IconButton>
+        <mdui-menu className={mduiStyles.menu} role="menu" dense>
           {children}
-        </div>
-      )}
+        </mdui-menu>
+      </mdui-dropdown>
     </div>
   );
 }
@@ -376,15 +541,28 @@ export function ActionMenuItem({
   danger?: boolean;
   active?: boolean;
 }) {
+  const { disabled, type: _type, ...menuItemProps } = props;
+  const menuItemRef = useRef<MduiMenuItemElement>(null);
+
+  useEffect(() => {
+    if (menuItemRef.current) {
+      (menuItemRef.current as unknown as { selected: boolean }).selected = active;
+    }
+  }, [active]);
+
   return (
-    <button
-      {...props}
-      type="button"
+    <MduiMenuItemHost
+      {...customElementProps(menuItemProps)}
+      ref={menuItemRef}
+      disabled={Boolean(disabled)}
+      selected={active}
       role="menuitem"
-      className={ui(`action-menu-item${danger ? " is-danger" : ""}${active ? " is-active" : ""} ${className}`)}
+      className={joinClassNames(mduiStyles.menuItem, className)}
+      data-danger={danger ? "true" : undefined}
+      data-active={active ? "true" : undefined}
     >
       {children}
-    </button>
+    </MduiMenuItemHost>
   );
 }
 

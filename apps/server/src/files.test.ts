@@ -1,4 +1,12 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  stat,
+  symlink,
+  unlink,
+  writeFile
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -50,6 +58,54 @@ describe("file attachments", () => {
     expect(sanitizeAttachmentName("../../a:b?.log")).toBe("a-b-.log");
     expect(sanitizeAttachmentName("...")).toBe("attachment");
   });
+
+  it("reuses an attachment mutation only for identical input", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "pi-web-attachment-"));
+    const mutationId = "7f0697ba-1428-4703-bca7-6df506585324";
+    const [first, retried] = await Promise.all([
+      saveAttachment(cwd, "notes.txt", Buffer.from("hello"), mutationId),
+      saveAttachment(cwd, "notes.txt", Buffer.from("hello"), mutationId)
+    ]);
+
+    expect(retried).toEqual(first);
+    expect(
+      (await readdir(join(cwd, ".pi-web", "attachments"))).filter((name) =>
+        name.startsWith(".pi-web-upload-")
+      )
+    ).toEqual([]);
+    await expect(
+      saveAttachment(cwd, "notes.txt", Buffer.from("changed"), mutationId)
+    ).rejects.toMatchObject({ code: "MUTATION_ID_REUSED", statusCode: 409 });
+    await expect(
+      saveAttachment(cwd, "other.txt", Buffer.from("hello"), mutationId)
+    ).rejects.toMatchObject({ code: "MUTATION_ID_REUSED", statusCode: 409 });
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "rejects a symlink planted at an idempotent attachment path",
+    async () => {
+      const cwd = await mkdtemp(join(tmpdir(), "pi-web-attachment-"));
+      const mutationId = "ba9503a9-6341-46bf-ae49-a9cd9efceab7";
+      const first = await saveAttachment(
+        cwd,
+        "notes.txt",
+        Buffer.from("hello"),
+        mutationId
+      );
+      const target = join(cwd, first.path);
+      const outside = join(await mkdtemp(join(tmpdir(), "pi-web-outside-")), "notes.txt");
+      await writeFile(outside, "hello");
+      await unlink(target);
+      await symlink(outside, target, "file");
+
+      await expect(
+        saveAttachment(cwd, "notes.txt", Buffer.from("hello"), mutationId)
+      ).rejects.toMatchObject({
+        code: "MUTATION_ID_REUSED",
+        statusCode: 409
+      });
+    }
+  );
 });
 
 describe("workspace file mutations", () => {
