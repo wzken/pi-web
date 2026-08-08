@@ -110,8 +110,11 @@ remote-friendly, but Pi Web does not terminate TLS or manage firewall rules.
 Use a trusted private network, SSH tunnel, or HTTPS reverse proxy. Never expose
 plain HTTP directly to an untrusted network.
 
-When TLS terminates at a reverse proxy, configure trusted-proxy and secure
-cookie behavior deliberately. Review the [security model](security-model.md).
+When TLS terminates at a reverse proxy, set `PI_WEB_TRUSTED_PROXY=true` only if
+the Pi Web port is reachable exclusively through that proxy; otherwise clients
+can forge forwarding headers and bypass IP-based login throttling. Set
+`PI_WEB_COOKIE_SECURE=always` for the proxied HTTPS origin. Review the
+[security model](security-model.md).
 
 ## Updates and backups
 

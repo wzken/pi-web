@@ -364,7 +364,7 @@ export const legacyMaterialThemeTokenNames = [
   "--blue"
 ] as const;
 
-export function getThemeColorPreset(
+function getThemeColorPreset(
   id: string | null | undefined
 ): ThemeColorPreset | null {
   return themeColorPresets.find((preset) => preset.id === id) ?? null;

@@ -1,13 +1,11 @@
 import {
-  ArrowUpRight,
-  Bug,
-  Code2,
-  FlaskConical,
-  History,
+  ChevronDown,
+  FolderOpen,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Search,
   Send,
-  Settings,
   SlidersHorizontal,
   X
 } from "lucide-react";
@@ -16,7 +14,6 @@ import type { SessionRecord, ThinkingLevel } from "@pi-web/protocol";
 import { api, isAbortError, jsonBody } from "../api";
 import {
   Button,
-  ButtonLink,
   Dialog,
   ErrorBanner,
   IconButton,
@@ -26,7 +23,6 @@ import { shouldSubmitComposerInput } from "../composer-input";
 import { DirectoryPicker } from "../DirectoryPicker";
 import { clearDraft, readDraft, writeDraft } from "../draft-store";
 import {
-  appendImageFiles,
   ImageAttachmentTray,
   useImageAttachmentDraft
 } from "../ImageAttachments";
@@ -34,6 +30,7 @@ import {
   appendAttachmentReferences,
   AttachmentPicker,
   FileAttachmentTray,
+  useAttachmentSelectionQueue,
   uploadAttachments,
   type PendingFileAttachment
 } from "../FileAttachments";
@@ -59,21 +56,6 @@ interface HomeSettings {
   defaultSystemPrompt: string | null;
 }
 
-const suggestions = [
-  {
-    label: "浏览代码库并说明它的核心结构",
-    icon: Code2
-  },
-  {
-    label: "检查最近的改动，找出可能的回归",
-    icon: Bug
-  },
-  {
-    label: "运行测试并修复第一个失败项",
-    icon: FlaskConical
-  }
-];
-
 export function HomePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -92,6 +74,8 @@ export function HomePage() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [runtimeOpen, setRuntimeOpen] = useState(false);
   const [files, setFiles] = useState<PendingFileAttachment[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
   const [mobileViewport] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia("(max-width: 760px)").matches
@@ -102,8 +86,14 @@ export function HomePage() {
     setImages,
     clear: clearImages
   } = useImageAttachmentDraft(homeDraftScope(cwd));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const addAttachments = useAttachmentSelectionQueue({
+    scope: homeDraftScope(cwd),
+    images,
+    files,
+    onImagesChange: setImages,
+    onFilesChange: setFiles,
+    onError: setError
+  });
   const createMutation = useRef(new PendingMutationTracker());
 
   useEffect(() => {
@@ -205,6 +195,19 @@ export function HomePage() {
                 ) ?? null
               )
             }
+            onSessionPinned={(updated) =>
+              setSessions((current) =>
+                current?.map((session) =>
+                  session.id === updated.id ? updated : session
+                ) ?? null
+              )
+            }
+            onSessionDeleted={(sessionId) =>
+              setSessions(
+                (current) =>
+                  current?.filter((session) => session.id !== sessionId) ?? null
+              )
+            }
           />
           <button
             className={ui("workbench-rail-backdrop")}
@@ -223,51 +226,44 @@ export function HomePage() {
             aria-expanded={railOpen}
             onClick={() => setRailOpen((value) => !value)}
           >
-            {railOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+            <span className={ui("desktop-rail-toggle-icon")}>
+              {railOpen ? (
+                <PanelLeftClose size={17} />
+              ) : (
+                <PanelLeftOpen size={17} />
+              )}
+            </span>
+            <Menu
+              className={ui("mobile-rail-toggle-icon")}
+              size={22}
+              aria-hidden="true"
+            />
           </IconButton>
           <div className={ui("workbench-topbar-title")}>
             <strong>{t("新会话")}</strong>
             <span>{cwd ? folderName(cwd) : t("选择工作目录")}</span>
           </div>
           <div className={ui("workbench-topbar-actions")}>
-            <ButtonLink
-              to="/sessions"
+            <IconButton
+              className={ui("mobile-home-search")}
+              label={t("搜索")}
               variant="toolbar"
-              size="sm"
-              tooltip={t("全部会话")}
-              aria-label={t("全部会话")}
+              onClick={() =>
+                window.dispatchEvent(new Event("pi-web:open-command"))
+              }
             >
-              <History size={15} />
-              <span>{t("全部会话")}</span>
-            </ButtonLink>
-            <ButtonLink
-              to="/settings"
-              variant="toolbar"
-              size="sm"
-              aria-label={t("设置")}
-              title={t("设置")}
-            >
-              <Settings size={15} />
-              <span>{t("设置")}</span>
-            </ButtonLink>
+              <Search size={20} />
+            </IconButton>
           </div>
         </header>
 
         <div className={ui("home-start-content")}>
           <div className={ui("home-start-inner")}>
             <div className={ui("home-intro")}>
-              <div className={ui("home-kicker")}>
-                <span className={ui("status-led")} />
-                PI
+              <div className={ui("home-agent-mark")} aria-hidden="true">
+                <img src="/pi-web.svg" alt="" />
               </div>
               <h1>{t("今天要做什么？")}</h1>
-              <p>
-                {cwd
-                  ? t("当前工作区：{{workspace}}", {
-                      workspace: folderName(cwd)
-                    })
-                  : t("选择一个工作目录开始")}
-              </p>
             </div>
 
             {displayedError !== null && (
@@ -279,26 +275,31 @@ export function HomePage() {
               />
             )}
 
-            <div className={ui("home-suggestions")} aria-label={t("任务建议")}>
-              {suggestions.map(({ label, icon: SuggestionIcon }) => (
-                <Button
-                  key={label}
-                  variant="toolbar"
-                  disabled={busy}
-                  onClick={() => {
-                    const translated = t(label);
-                    const next = prompt.trim()
-                      ? `${prompt.trimEnd()}\n${translated}`
-                      : translated;
-                    setPrompt(next);
-                    writeDraft(homeDraftScope(cwd), next);
-                  }}
-                >
-                  <SuggestionIcon size={19} />
-                  <span>{t(label)}</span>
-                  <ArrowUpRight size={15} />
-                </Button>
-              ))}
+            <div className={ui("mobile-home-actions")}>
+              <AttachmentPicker
+                className={ui("mobile-home-action")}
+                visibleLabel
+                disabled={busy}
+                onAdd={addAttachments}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                className={ui("mobile-home-action")}
+                onClick={() => setRuntimeOpen(true)}
+              >
+                <FolderOpen size={22} />
+                <span>{t("选择项目")}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className={ui("mobile-home-action")}
+                onClick={() => setRuntimeOpen(true)}
+              >
+                <SlidersHorizontal size={22} />
+                <span>{t("配置模型")}</span>
+              </Button>
             </div>
 
             <form className={ui("home-composer")} onSubmit={submit}>
@@ -310,7 +311,11 @@ export function HomePage() {
                   writeDraft(homeDraftScope(cwd), value);
                 }}
                 rows={2}
-                placeholder={t("描述任务，使用 @ 引用工作区文件，或添加附件…")}
+                placeholder={
+                  mobileViewport
+                    ? t("问问 Pi Web")
+                    : t("描述任务，使用 @ 引用工作区文件，或添加附件…")
+                }
                 aria-label={t("新会话任务")}
                 autoFocus={!mobileViewport}
                 onPaste={(event) => {
@@ -320,9 +325,7 @@ export function HomePage() {
                     .filter((file): file is File => file !== null);
                   if (files.length === 0) return;
                   event.preventDefault();
-                  void appendImageFiles(images, files)
-                    .then(setImages)
-                    .catch(setError);
+                  void addAttachments(files);
                 }}
                 onKeyDown={(event) => {
                   if (
@@ -351,17 +354,14 @@ export function HomePage() {
               <div className={ui("home-composer-bar")}>
                 <div className={ui("home-composer-tools")}>
                   <AttachmentPicker
-                    images={images}
-                    files={files}
                     disabled={busy}
-                    onImagesChange={setImages}
-                    onFilesChange={setFiles}
-                    onError={setError}
+                    onAdd={addAttachments}
                   />
                   <Button
                     type="button"
                     variant="toolbar"
-                    size="icon"
+                    size="sm"
+                    className={ui("codex-runtime-trigger")}
                     active={runtimeOpen}
                     aria-haspopup="dialog"
                     aria-expanded={runtimeOpen}
@@ -370,13 +370,15 @@ export function HomePage() {
                     onClick={() => setRuntimeOpen(true)}
                   >
                     <SlidersHorizontal size={17} />
+                    <span>{shortModelName(model) || t("默认模型")}</span>
+                    <small>{thinkingLevel || t("默认思考")}</small>
+                    <ChevronDown size={13} />
                   </Button>
-                  <span className={ui("home-runtime-summary")}>
-                    {shortModelName(model) || t("默认模型")}
-                    <i aria-hidden="true">·</i>
-                    {thinkingLevel || t("默认思考")}
-                    {systemPrompt.trim() ? <b>{t("已附加提示词")}</b> : null}
-                  </span>
+                  {systemPrompt.trim() ? (
+                    <span className={ui("codex-prompt-indicator")}>
+                      {t("已附加提示词")}
+                    </span>
+                  ) : null}
                 </div>
                 <Button
                   type="submit"

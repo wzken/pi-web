@@ -5,6 +5,75 @@ import { describe, expect, it } from "vitest";
 import { SessionDatabase } from "./database.js";
 
 describe("SessionDatabase", () => {
+  it("persists pinned sessions first and softly removes deleted history", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pi-web-db-session-actions-"));
+    const file = join(directory, "test.sqlite");
+    const db = new SessionDatabase(file);
+    const older = db.createSession({
+      cwd: directory,
+      displayName: "older pinned",
+      createdBy: "web"
+    });
+    const newer = db.createSession({
+      cwd: directory,
+      displayName: "newer",
+      createdBy: "web"
+    });
+
+    expect(db.setSessionPinned(older.id, true)).toMatchObject({ pinned: true });
+    expect(db.listSessions().map((session) => session.id)).toEqual([
+      older.id,
+      newer.id
+    ]);
+    db.deleteSession(older.id);
+    expect(db.listSessions().map((session) => session.id)).toEqual([newer.id]);
+    expect(() => db.getSession(older.id)).toThrowError(
+      expect.objectContaining({ code: "SESSION_NOT_FOUND" })
+    );
+    db.close();
+
+    const reopened = new SessionDatabase(file);
+    expect(reopened.listSessions().map((session) => session.id)).toEqual([
+      newer.id
+    ]);
+    reopened.close();
+  });
+
+  it("rolls back session actions and surrounding metadata when auditing fails", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pi-web-db-session-rollback-"));
+    const db = new SessionDatabase(join(directory, "test.sqlite"));
+    const session = db.createSession({
+      cwd: directory,
+      displayName: "protected session",
+      createdBy: "web"
+    });
+    db.setSessionPinned(session.id, true);
+    db.setSetting("folder-marker", "before");
+    db.db.exec(`
+      CREATE TRIGGER reject_session_action_audit
+      BEFORE INSERT ON audit_events
+      WHEN NEW.type IN ('session.pin', 'session.delete')
+      BEGIN
+        SELECT RAISE(ABORT, 'audit unavailable');
+      END;
+    `);
+
+    expect(() => db.setSessionPinned(session.id, false)).toThrow(
+      "audit unavailable"
+    );
+    expect(db.getSession(session.id)).toMatchObject({ pinned: true });
+
+    expect(() =>
+      db.transaction(() => {
+        db.setSetting("folder-marker", "after");
+        db.deleteSession(session.id);
+      })
+    ).toThrow("audit unavailable");
+    expect(db.getSetting("folder-marker")).toBe("before");
+    expect(db.getSession(session.id)).toMatchObject({ pinned: true });
+    db.close();
+  });
+
   it("durably reuses create mutation IDs and rejects payload changes", async () => {
     const directory = await mkdtemp(join(tmpdir(), "pi-web-db-mutation-"));
     const file = join(directory, "test.sqlite");

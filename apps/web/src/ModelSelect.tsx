@@ -10,7 +10,7 @@ import { isCacheFresh } from "./cache-policy";
 import { t } from "./i18n";
 import { ui } from "./ui";
 
-export const modelListTtlMs = 60_000;
+const modelListTtlMs = 60_000;
 
 let modelRequest: Promise<PiStatus["models"]> | null = null;
 let modelCache: {

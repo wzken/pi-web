@@ -1914,12 +1914,15 @@ textarea:focus-visible {
   .sidebar {
     width: min(270px, 84vw);
     transform: translateX(-102%);
+    visibility: hidden;
     box-shadow: 25px 0 80px rgb(0 0 0 / 42%);
-    transition: 180ms ease;
+    transition: transform 180ms ease, visibility 0s linear 180ms;
   }
 
   .sidebar.sidebar-open {
     transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
   }
 
   .mobile-close {

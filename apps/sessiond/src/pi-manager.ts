@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { PiWebConfig } from "@pi-web/config";
-import { PiRpcWorker } from "@pi-web/pi-rpc";
+import { PiRpcWorker, workerEnvironment } from "@pi-web/pi-rpc";
 import type { PiStatus } from "@pi-web/protocol";
 import { PiWebError, safeErrorMessage } from "@pi-web/shared";
 import { SessionDatabase } from "./database.js";
@@ -173,7 +173,7 @@ export class PiManager {
       windowsHide: true,
       maxBuffer: 4 * 1024 * 1024,
       encoding: "utf8",
-      env: process.env
+      env: workerEnvironment(process.env)
     });
   }
 

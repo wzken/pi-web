@@ -5,25 +5,25 @@ import {
   Clipboard,
   FolderCog,
   KeyRound,
-  Palette,
   Save,
   Settings2,
   ShieldCheck,
   Stethoscope,
-  Wrench
+  Wrench,
+  X
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ThinkingLevel } from "@pi-web/protocol";
 import { api, isAbortError, jsonBody } from "../api";
 import {
   Button,
   Dialog,
   ErrorBanner,
+  IconButton,
   Loading,
   Switch,
   useToast
 } from "../components";
-import { ThemeSettings } from "../ThemeSettings";
 import {
   browserNotificationsAvailable,
   loadNotificationPreferences,
@@ -34,6 +34,7 @@ import {
 } from "../notifications";
 import { t } from "../i18n";
 import { LanguageSettings } from "../i18n/LanguageSettings";
+import { useNavigate } from "../router";
 import { ui } from "../ui";
 import styles from "./SettingsPage.module.css";
 
@@ -72,13 +73,14 @@ interface DoctorResult {
 }
 
 const settingsLinks = [
-  { href: "#appearance", label: "外观", icon: Palette },
-  { href: "#task-defaults", label: "任务默认值", icon: Settings2 },
-  { href: "#preferences", label: "偏好设置", icon: BellRing },
-  { href: "#security", label: "安全与诊断", icon: ShieldCheck }
+  { href: "#task-defaults", label: "常规", icon: Settings2 },
+  { href: "#preferences", label: "通知与语言", icon: BellRing },
+  { href: "#security", label: "安全与系统", icon: ShieldCheck }
 ] as const;
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+  const dialogRef = useRef<HTMLElement>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [roots, setRoots] = useState("");
   const [doctor, setDoctor] = useState<DoctorResult | null>(null);
@@ -87,10 +89,55 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [doctorBusy, setDoctorBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
-  const [activeSection, setActiveSection] = useState("appearance");
+  const [activeSection, setActiveSection] = useState("task-defaults");
   const [notificationPreferences, setNotificationPreferences] =
     useState<NotificationPreferences>(loadNotificationPreferences);
   const toast = useToast();
+  const settingsReady = settings !== null;
+
+  useEffect(() => {
+    if (!settingsReady) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => {
+      dialogRef.current
+        ?.querySelector<HTMLElement>("[data-settings-close]")
+        ?.focus({ preventScroll: true });
+    });
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigate("/");
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])"
+        ) ?? []
+      ).filter((control) => control.offsetParent !== null);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus({ preventScroll: true });
+    };
+  }, [navigate, settingsReady]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -199,29 +246,26 @@ export function SettingsPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.pageHeader}>
-        <div>
-          <h1>{t("设置")}</h1>
-          <p>{t("限制文件边界、调度策略和 Pi 运行参数。")}</p>
-        </div>
-        <Button
-          form="settings-form"
-          type="submit"
-          loading={busy}
-          loadingLabel={t("保存中…")}
-        >
-          <Save size={17} />
-          {t("保存设置")}
-        </Button>
-      </header>
-
-      {error !== null && (
-        <ErrorBanner error={error} onDismiss={() => setError(null)} />
-      )}
-
-      <div className={styles.settingsShell}>
+      <section
+        ref={dialogRef}
+        className={styles.settingsShell}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+      >
         <nav className={styles.settingsNav} aria-label={t("设置")}>
-          <span className={styles.navLabel}>SETTINGS</span>
+          <div className={styles.settingsNavHeader}>
+            <strong>{t("设置")}</strong>
+            <IconButton
+              data-settings-close
+              label={t("关闭设置")}
+              size="sm"
+              onClick={() => navigate("/")}
+            >
+              <X size={17} />
+            </IconButton>
+          </div>
+          <span className={styles.navLabel}>PI WEB</span>
           {settingsLinks.map(({ href, label, icon: Icon }) => {
             const sectionId = href.slice(1);
             const active = activeSection === sectionId;
@@ -240,9 +284,28 @@ export function SettingsPage() {
           })}
         </nav>
 
-        <form id="settings-form" className={styles.settingsContent} onSubmit={save}>
-          <ThemeSettings />
+        <div className={styles.settingsMain}>
+          <header className={styles.pageHeader}>
+            <div>
+              <h1 id="settings-title">{t("设置")}</h1>
+              <p>{t("限制文件边界、调度策略和 Pi 运行参数。")}</p>
+            </div>
+            <Button
+              form="settings-form"
+              type="submit"
+              loading={busy}
+              loadingLabel={t("保存中…")}
+            >
+              <Save size={17} />
+              {t("保存设置")}
+            </Button>
+          </header>
 
+          {error !== null && (
+            <ErrorBanner error={error} onDismiss={() => setError(null)} />
+          )}
+
+          <form id="settings-form" className={styles.settingsContent} onSubmit={save}>
           <section
             id="task-defaults"
             className={styles.settingsCard}
@@ -601,8 +664,9 @@ export function SettingsPage() {
               </div>
             </div>
           </section>
-        </form>
-      </div>
+          </form>
+        </div>
+      </section>
 
       {newKey && (
         <Dialog

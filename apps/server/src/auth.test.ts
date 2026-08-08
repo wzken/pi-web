@@ -3,6 +3,7 @@ import type { PiWebConfig } from "@pi-web/config";
 import { hashAccessKey, PiWebError } from "@pi-web/shared";
 import {
   AuthManager,
+  maxPendingLoginAttemptsPerRemote,
   pruneLoginAttempts,
   shouldUseSecureCookie
 } from "./auth.js";
@@ -16,6 +17,7 @@ describe("server authentication policy", () => {
   const savedKey = process.env.PI_WEB_ACCESS_KEY;
 
   afterEach(() => {
+    vi.useRealTimers();
     if (savedKey === undefined) delete process.env.PI_WEB_ACCESS_KEY;
     else process.env.PI_WEB_ACCESS_KEY = savedKey;
   });
@@ -231,6 +233,47 @@ describe("server authentication policy", () => {
     expect(client.request).toHaveBeenCalledTimes(5);
   });
 
+  it("bounds pending login attempts for each remote", async () => {
+    process.env.PI_WEB_ACCESS_KEY = "expected-secret";
+    const client = {
+      request: vi.fn().mockResolvedValue(null)
+    } as unknown as SessiondClient;
+    let finishVerification: ((valid: boolean) => void) | undefined;
+    const verification = new Promise<boolean>((resolve) => {
+      finishVerification = resolve;
+    });
+    const verify = vi.fn(async () => await verification);
+    const auth = new AuthManager(
+      client,
+      config,
+      async () => undefined,
+      verify
+    );
+    await auth.initialize();
+
+    const pending = Array.from(
+      { length: maxPendingLoginAttemptsPerRemote },
+      (_, index) => auth.login(`wrong-${index}`, "203.0.113.9")
+    );
+    const drained = Promise.allSettled(pending);
+    await vi.waitFor(() => expect(verify).toHaveBeenCalledOnce());
+
+    await expect(
+      auth.login("one-too-many", "203.0.113.9")
+    ).rejects.toMatchObject({
+      code: "LOGIN_RATE_LIMITED",
+      statusCode: 429
+    });
+
+    finishVerification?.(false);
+    const results = await drained;
+    expect(results.every((result) => result.status === "rejected")).toBe(true);
+    expect(verify).toHaveBeenCalledTimes(maxPendingLoginAttemptsPerRemote);
+    await expect(auth.login("after-drain", "203.0.113.9")).rejects.toMatchObject(
+      { code: "INVALID_ACCESS_KEY", statusCode: 401 }
+    );
+  });
+
   it("expires stale login attempts and evicts the oldest remotes at capacity", () => {
     const now = 2 * 60 * 60 * 1000;
     const attempts = new Map<
@@ -355,6 +398,36 @@ describe("server authentication policy", () => {
     await Promise.all([first, second]);
 
     expect(persistCount).toBe(2);
+  });
+
+  it("prunes all expired sessions when a later login is persisted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    process.env.PI_WEB_ACCESS_KEY = "expected-secret";
+    let persisted: { sessions: unknown[] } | null = null;
+    const client = {
+      request: vi.fn(async (method: string, params?: unknown) => {
+        if (method === "auth.get_sessions") return null;
+        if (method === "auth.set_sessions") {
+          persisted = (params as { sessions: { sessions: unknown[] } }).sessions;
+        }
+        return null;
+      })
+    } as unknown as SessiondClient;
+    const auth = new AuthManager(
+      client,
+      config,
+      async () => undefined,
+      async () => true
+    );
+    await auth.initialize();
+    await auth.login("expected-secret", "198.51.100.30");
+
+    vi.setSystemTime(new Date("2026-01-16T00:00:00.000Z"));
+    await auth.login("expected-secret", "198.51.100.31");
+
+    expect(persisted).not.toBeNull();
+    expect(persisted!.sessions).toHaveLength(1);
   });
 
   it("keeps the old key and sessions when atomic reset persistence fails", async () => {

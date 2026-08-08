@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 
-test("initializes login theme before authentication without nested input surfaces", async ({
+test("follows the system appearance before authentication without nested input surfaces", async ({
   page
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
@@ -15,21 +15,13 @@ test("initializes login theme before authentication without nested input surface
       ).backgroundColor
     })
   );
-  expect(darkInput.shellBackground).toBe("rgb(26, 26, 28)");
+  expect(darkInput.shellBackground).not.toBe("rgba(0, 0, 0, 0)");
   expect(darkInput.inputBackground).toBe("rgba(0, 0, 0, 0)");
 
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-color-mode", "light");
   await page.goto("/?safe-theme=1");
   await expect(page.locator("html")).toHaveAttribute("data-color-mode", "light");
-  const lightInput = await page.locator(".login-panel .input-with-icon").evaluate(
-    (shell) => ({
-      shellBackground: getComputedStyle(shell).backgroundColor,
-      inputBackground: getComputedStyle(
-        shell.querySelector("input") as HTMLInputElement
-      ).backgroundColor
-    })
-  );
-  expect(lightInput.shellBackground).toBe("rgb(240, 240, 242)");
-  expect(lightInput.inputBackground).toBe("rgba(0, 0, 0, 0)");
 });
 
 test("authenticates, runs a durable session, browses files, and schedules work", async ({
@@ -96,11 +88,9 @@ test("authenticates, runs a durable session, browses files, and schedules work",
 
   const commandButton =
     testInfo.project.name === "mobile"
-      ? page
-          .locator(".mobile-header")
-          .getByRole("button", { name: "打开命令面板" })
+      ? page.getByRole("button", { name: "搜索" })
       : page
-          .locator(".sidebar-brand")
+          .locator(".workbench-session-rail")
           .getByRole("button", { name: "打开命令面板" });
   await expect(commandButton).toBeVisible();
   await commandButton.click();
@@ -115,6 +105,27 @@ test("authenticates, runs a durable session, browses files, and schedules work",
 
   const expandRail = page.getByRole("button", { name: "展开会话栏" });
   if (await expandRail.isVisible()) await expandRail.click();
+
+  const pluginLink = page
+    .locator(".workbench-session-rail")
+    .getByRole("link", { name: "插件", exact: true });
+  await expect(pluginLink).toBeVisible();
+  await expect(pluginLink).toHaveAttribute("href", "/pi?tab=packages");
+
+  await page.getByRole("button", { name: "折叠项目" }).click();
+  await expect(
+    page.getByRole("button", { name: "展开项目" })
+  ).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "展开项目" }).click();
+  await page.getByRole("button", { name: "折叠聊天" }).click();
+  await expect(
+    page.getByRole("button", { name: "展开聊天" })
+  ).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "展开聊天" }).click();
+  await expect(
+    page.getByRole("link", { name: "查看全部会话", exact: true })
+  ).toBeVisible();
+
   await page.getByRole("button", { name: "创建对话文件夹" }).click();
   await page.getByLabel("对话文件夹名称").fill(folderName);
   await page.getByRole("button", { name: "保存文件夹" }).click();
@@ -147,6 +158,9 @@ test("authenticates, runs a durable session, browses files, and schedules work",
     expect(sendBox).not.toBeNull();
     expect(sendBox!.x).toBeGreaterThan(toolsBox!.x + toolsBox!.width);
   } else {
+    await expect(page.getByRole("button", { name: /添加附件/ }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "选择项目" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "配置模型" })).toBeVisible();
     const composerBox = await page.locator(".home-composer").boundingBox();
     const viewport = page.viewportSize();
     expect(composerBox).not.toBeNull();

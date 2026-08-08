@@ -43,24 +43,15 @@ source code and branding are not included here.
   remain the responsibility of each Pi worker and its project context.
 - Responsive desktop/mobile UI, command palette, notifications, and PWA assets.
 - System-aware Simplified Chinese and English interface.
-- Declarative ZIP theme packs with light, dark, and system modes.
+- A low-distraction coding-agent workbench that follows the operating system's
+  light or dark appearance automatically.
+- A collapsible sidebar that treats working directories as projects and keeps
+  recent chats, Package plugins, and schedules separate, with full history one
+  click away through View all sessions.
+- A phone-first chat surface with a full-screen navigation drawer, large touch
+  targets, real attachment/runtime shortcuts, a bottom-anchored composer, and
+  long-press actions to pin, rename, or delete recent sessions.
 - Linux systemd user services and a non-root Docker Compose deployment.
-
-## Theme packs
-
-Pi Neutral is the built-in default. The following optional example packages
-each contain light and dark schemes and can follow the operating system:
-
-| Theme | Source | Installable ZIP |
-| --- | --- | --- |
-| Geist Workbench | [theme files](theme-packs/geist-workbench) | [download](theme-packs/dist/geist-workbench.zip) |
-| Material 3 Workbench | [theme files](theme-packs/material-3-workbench) | [download](theme-packs/dist/material-3-workbench.zip) |
-
-Settings can select packages already installed by an administrator. ZIP
-installation remains available through the compatibility API and deployment
-tooling, but is intentionally not exposed in the product UI. The [theme-pack
-guide](theme-packs/README.md) documents the manifest, safety limits, and
-recovery mode.
 
 ## Requirements
 
@@ -72,18 +63,51 @@ recovery mode.
 The current compatibility baseline is Pi Coding Agent 0.82.0. Tests use a
 process-level fake Pi RPC worker and do not require provider credentials.
 
+## Quick start from source
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build
+pnpm pi-web start
+```
+
+On the first interactive start, Pi Web prints a generated access key once.
+Store it, open `http://127.0.0.1:8787`, and sign in with that key. Pi and its
+provider credentials are read from the same operating-system user that starts
+Pi Web. Run `pnpm pi-web doctor` if the UI opens but Pi sessions cannot start.
+
+The default allowed root is the current user's home directory. Set
+`PI_WEB_ALLOWED_ROOTS` before starting Pi Web if sessions should be limited to
+specific project directories. Separate multiple roots with `:` on Linux and
+`;` on Windows.
+
+## Typical workflow
+
+1. Sign in with the Pi Web access key.
+2. Choose a working directory under an allowed root, the model, thinking
+   level, and optional system prompt, then create the session.
+3. Send prompts, steer the active turn, queue follow-ups, or abort work from
+   the session page.
+4. Inspect workspace files and images or use the session terminal without
+   stopping the Pi worker when the browser disconnects.
+5. Create a schedule when a prompt needs to run later or repeatedly; each run
+   creates a new Pi session and records its outcome.
+
 ## Development
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm build
+# Terminal 1
 pnpm dev:sessiond
+# Terminal 2
 pnpm dev:server
+# Terminal 3
 pnpm dev:web
 ```
 
 The Vite UI runs at `http://127.0.0.1:5173` and proxies API and WebSocket
-requests to port 8787.
+requests to port 8787. Start sessiond before the server on a fresh runtime.
 
 Run the full verification:
 
@@ -92,6 +116,32 @@ pnpm verify
 pnpm test:e2e
 pnpm audit --prod
 ```
+
+The unit and integration suites use the fake Pi worker and need no provider
+credentials. Playwright starts its own stateful backend and runs desktop and
+mobile projects serially. See [Contributing](CONTRIBUTING.md) for change and
+pull-request expectations.
+
+## Project structure
+
+| Path | Responsibility |
+| --- | --- |
+| `apps/web` | React/Vite PWA, session workbench, settings, files, terminal, and schedules |
+| `apps/server` | Fastify HTTP/WebSocket boundary, authentication, static assets, file APIs, and PTYs |
+| `apps/sessiond` | Durable session authority, SQLite state, Pi worker supervision, IPC, and Cron |
+| `apps/cli` | Foreground startup, diagnostics, access-key management, and systemd installation |
+| `packages/protocol` | Shared request, event, and domain contracts |
+| `packages/pi-rpc` | Strict JSONL transport for `pi --mode rpc` |
+| `packages/pi-session-reader` | Pi session JSONL parsing and snapshot reconstruction |
+| `packages/config`, `packages/shared` | Configuration, paths, security helpers, and shared state logic |
+| `packages/scheduler-extension` | Restricted Pi extension used to manage schedules |
+| `tests`, `docs` | End-to-end/integration coverage and design documentation |
+
+The browser talks only to `apps/server`. The server forwards authenticated
+session operations over user-only local IPC to `apps/sessiond`, which owns
+SQLite and one Pi RPC process per active session. Pi's own JSONL remains the
+durable source of conversation content. See [Architecture](docs/architecture.md)
+for recovery, ownership, and protocol details.
 
 ## Deployment
 
@@ -120,6 +170,22 @@ Both deployment paths, Windows PowerShell commands, trusted remote access,
 updates, and backups are covered in the
 [deployment guide](docs/deployment.md).
 
+## CLI reference
+
+Run commands from a built source checkout with `pnpm pi-web <command>`.
+
+| Command | Purpose |
+| --- | --- |
+| `start` | Run sessiond and the web server together in the foreground |
+| `server` / `sessiond` | Run one service for development or diagnostics |
+| `install` | Install and start Linux systemd user services |
+| `status` | Show the configured address and, on Linux, systemd state |
+| `doctor` | Check Node, Pi, RPC, SQLite, IPC, roots, server health, and exposure |
+| `set-password` | Set a custom access password through a hidden prompt |
+| `reset-key` | Generate and persist a replacement access key; restart the server when prompted |
+| `uninstall` | Remove systemd units while preserving configuration and data |
+| `version` | Print the Pi Web version |
+
 ## Configuration
 
 Environment variables override the configuration file.
@@ -136,9 +202,26 @@ Environment variables override the configuration file.
 | `PI_WEB_MODEL_SCHEDULE_POLICY` | `allow` |
 | `PI_WEB_PI_EXECUTABLE` | `pi` |
 | `PI_WEB_ACCESS_KEY` | generated; only its hash is persisted |
+| `PI_WEB_TRUSTED_PROXY` | `false` |
 | `PI_WEB_COOKIE_SECURE` | `auto` |
+| `PI_WEB_DEFAULT_MODEL` | unset; use Pi's current default |
+| `PI_WEB_DEFAULT_THINKING_LEVEL` | unset; use Pi's current default |
+| `PI_WEB_DEFAULT_SYSTEM_PROMPT` | unset |
+| `PI_WEB_MAX_SCHEDULED_JOBS` | `200` |
+| `PI_WEB_MAX_CONCURRENT_WORKERS` | `8` |
+| `PI_WEB_EVENT_BUFFER_SIZE` | `2000` events |
 
-Multiple allowed roots use `:` on Linux.
+Configuration is loaded from `~/.config/pi-web/config.json` by default (or the
+corresponding XDG configuration directory), then overridden by environment
+variables. Multiple allowed roots use `:` on Linux and `;` on Windows.
+Operational paths can be relocated with
+`PI_WEB_CONFIG_DIR`, `PI_WEB_DATA_DIR`, and `PI_WEB_CACHE_DIR`; Docker Compose
+sets these automatically inside the container.
+
+When `PI_WEB_ACCESS_KEY` is set, that environment value owns the credential;
+`set-password` and `reset-key` are disabled. Change the environment value and
+restart the server instead. Treat `PI_WEB_ALLOW_ANY_DIRECTORY=true` as a
+deliberate removal of workspace-root containment, not a convenience default.
 
 ## Security
 
@@ -161,6 +244,8 @@ vulnerabilities through the process in [SECURITY.md](SECURITY.md).
 - `waiting` means Pi is ready for more input, not that the session is finished.
 - Linux is the supported production platform.
 - File deletion and overwrite are intentionally unavailable.
+- Deleting a session hides it from Pi Web's session index without removing Pi's
+  original JSONL record.
 - Web-server restarts terminate attached terminal processes.
 - Authenticated session data is not available offline; the PWA caches only
   compiled static assets.
@@ -172,11 +257,11 @@ See [scope](docs/scope.md) for explicit non-goals and
 
 - [Scope](docs/scope.md)
 - [Architecture](docs/architecture.md)
+- [Architecture decisions](docs/decisions/README.md)
 - [Deployment](docs/deployment.md)
 - [Security model](docs/security-model.md)
 - [Scheduler](docs/scheduler.md)
 - [Pi compatibility](docs/pi-compatibility.md)
-- [Theme packs](theme-packs/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Research references](docs/references.md)
 

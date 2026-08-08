@@ -221,6 +221,20 @@ export class IpcServer {
           input.displayName
         );
       }
+      case "sessions.pin":
+        return this.#supervisor.pin(
+          stringParam(params, "id"),
+          z.boolean().parse(params.pinned)
+        );
+      case "sessions.delete": {
+        const id = stringParam(params, "id");
+        this.#supervisor.assertDeletable(id);
+        this.#db.transaction(() => {
+          this.#sessionFolders.assign(id, { folderId: null });
+          this.#supervisor.delete(id);
+        });
+        return { deleted: true };
+      }
       case "sessions.create": {
         const input = createSessionSchema.parse(params);
         return await this.#supervisor.create({

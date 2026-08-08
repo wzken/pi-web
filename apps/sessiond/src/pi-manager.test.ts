@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import type { PiWebConfig } from "@pi-web/config";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionDatabase } from "./database.js";
 import {
   PiManager,
@@ -8,6 +8,8 @@ import {
   parsePackageList,
   validatePackageSource
 } from "./pi-manager.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Pi package argv validation", () => {
   it("allows documented sources and rejects shell-like input", () => {
@@ -62,13 +64,18 @@ describe("Pi package argv validation", () => {
   });
 
   it("runs global model and package commands from disposable non-project cwd", async () => {
-    const calls: Array<{ args: string[]; cwd: string | undefined }> = [];
+    vi.stubEnv("PI_WEB_ACCESS_KEY", "must-not-reach-pi");
+    const calls: Array<{
+      args: string[];
+      cwd: string | undefined;
+      env: NodeJS.ProcessEnv;
+    }> = [];
     const audit = vi.fn();
     const manager = new PiManager(
       { piExecutable: "pi" } as PiWebConfig,
       { audit } as unknown as SessionDatabase,
       async (_executable, args, options) => {
-        calls.push({ args, cwd: options.cwd });
+        calls.push({ args, cwd: options.cwd, env: options.env });
         return {
           stdout:
             args[0] === "list"
@@ -100,6 +107,7 @@ describe("Pi package argv validation", () => {
     );
     for (const call of globalCalls) {
       expect(call.cwd).toMatch(/pi-web-global-scope-/);
+      expect(call.env.PI_WEB_ACCESS_KEY).toBeUndefined();
       expect(
         await stat(call.cwd ?? "").then(
           () => true,

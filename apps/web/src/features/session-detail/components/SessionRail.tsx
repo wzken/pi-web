@@ -1,6 +1,7 @@
 import type { SessionRecord } from "@pi-web/protocol";
 import { SessionNavigator } from "../../../SessionNavigator";
 import { useSessionList } from "../../../useSessionList";
+import { useNavigate } from "../../../router";
 
 interface SessionRailProps {
   currentId: string;
@@ -16,6 +17,7 @@ export function SessionRail({
   onSessionRenamed
 }: SessionRailProps) {
   const { sessions, setSessions } = useSessionList();
+  const navigate = useNavigate();
 
   return (
     <SessionNavigator
@@ -30,6 +32,21 @@ export function SessionRail({
           ) ?? null
         );
         onSessionRenamed(updated);
+      }}
+      onSessionPinned={(updated) => {
+        setSessions((current) =>
+          current?.map((session) =>
+            session.id === updated.id ? updated : session
+          ) ?? null
+        );
+        onSessionRenamed(updated);
+      }}
+      onSessionDeleted={(sessionId) => {
+        setSessions(
+          (current) =>
+            current?.filter((session) => session.id !== sessionId) ?? null
+        );
+        if (sessionId === currentId) navigate("/");
       }}
     />
   );

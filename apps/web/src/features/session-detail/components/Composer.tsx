@@ -17,11 +17,11 @@ import {
   appendAttachmentReferences,
   AttachmentPicker,
   FileAttachmentTray,
+  useAttachmentSelectionQueue,
   uploadAttachments,
   type PendingFileAttachment
 } from "../../../FileAttachments";
 import {
-  appendImageFiles,
   ImageAttachmentTray,
   useImageAttachmentDraft
 } from "../../../ImageAttachments";
@@ -65,6 +65,14 @@ export function Composer({
     clear: clearImages
   } = useImageAttachmentDraft(draftScope);
   const [files, setFiles] = useState<PendingFileAttachment[]>([]);
+  const addAttachments = useAttachmentSelectionQueue({
+    scope: draftScope,
+    images,
+    files,
+    onImagesChange: setImages,
+    onFilesChange: setFiles,
+    onError
+  });
   const [mode, setMode] = useState<"steer" | "follow_up">("steer");
   const [busy, setBusy] = useState(false);
   const [stopBusy, setStopBusy] = useState(false);
@@ -244,12 +252,8 @@ export function Composer({
       />
       <div className={ui("composer-box")}>
         <AttachmentPicker
-          images={images}
-          files={files}
           disabled={!canCompose || busy}
-          onImagesChange={setImages}
-          onFilesChange={setFiles}
-          onError={onError}
+          onAdd={addAttachments}
         />
         <textarea
           rows={2}
@@ -270,9 +274,7 @@ export function Composer({
               .filter((file): file is File => file !== null);
             if (files.length === 0) return;
             event.preventDefault();
-            void appendImageFiles(images, files)
-              .then(setImages)
-              .catch(onError);
+            void addAttachments(files);
           }}
           onKeyDown={(event) => {
             if (

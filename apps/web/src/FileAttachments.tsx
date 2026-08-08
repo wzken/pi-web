@@ -1,5 +1,5 @@
-import { FileText, Paperclip, X } from "lucide-react";
-import { useRef, type ChangeEvent } from "react";
+import { FileText, Paperclip, Plus, X } from "lucide-react";
+import { useCallback, useRef, type ChangeEvent } from "react";
 import { api, jsonBody } from "./api";
 import { IconButton } from "./components";
 import {
@@ -29,44 +29,140 @@ interface UploadedAttachment {
   size: number;
 }
 
-export function AttachmentPicker({
+interface AttachmentSelectionQueueOptions {
+  active: () => boolean;
+  getImages: () => PendingImage[];
+  getFiles: () => PendingFileAttachment[];
+  appendImages: (
+    current: PendingImage[],
+    selected: File[]
+  ) => Promise<PendingImage[]>;
+  appendFiles: (
+    current: PendingFileAttachment[],
+    selected: File[]
+  ) => PendingFileAttachment[];
+  setImages: (images: PendingImage[]) => void;
+  setFiles: (files: PendingFileAttachment[]) => void;
+}
+
+export interface AttachmentSelectionQueue {
+  add(selected: File[]): Promise<void>;
+}
+
+export function createAttachmentSelectionQueue({
+  active,
+  getImages,
+  getFiles,
+  appendImages,
+  appendFiles,
+  setImages,
+  setFiles
+}: AttachmentSelectionQueueOptions): AttachmentSelectionQueue {
+  let tail = Promise.resolve();
+  return {
+    add(selected) {
+      const operation = tail.then(async () => {
+        if (!active()) return;
+        const imageFiles = selected.filter((file) =>
+          file.type.startsWith("image/")
+        );
+        const generalFiles = selected.filter(
+          (file) => !file.type.startsWith("image/")
+        );
+        if (imageFiles.length > 0) {
+          const base = getImages();
+          const combined = await appendImages(base, imageFiles);
+          if (!active()) return;
+          const added = combined.slice(base.length);
+          setImages([...getImages(), ...added]);
+        }
+        if (generalFiles.length > 0 && active()) {
+          setFiles(appendFiles(getFiles(), generalFiles));
+        }
+      });
+      tail = operation.catch(() => undefined);
+      return operation;
+    }
+  };
+}
+
+export function useAttachmentSelectionQueue({
+  scope,
   images,
   files,
-  disabled = false,
   onImagesChange,
   onFilesChange,
   onError
 }: {
+  scope: string;
   images: PendingImage[];
   files: PendingFileAttachment[];
-  disabled?: boolean;
   onImagesChange: (images: PendingImage[]) => void;
   onFilesChange: (files: PendingFileAttachment[]) => void;
   onError: (error: unknown) => void;
+}): (selected: File[]) => Promise<void> {
+  const state = useRef({
+    images,
+    files,
+    onImagesChange,
+    onFilesChange,
+    onError
+  });
+  state.current = {
+    images,
+    files,
+    onImagesChange,
+    onFilesChange,
+    onError
+  };
+  const queue = useRef<{
+    scope: string;
+    value: AttachmentSelectionQueue;
+  } | null>(null);
+  if (queue.current?.scope !== scope) {
+    const value = createAttachmentSelectionQueue({
+      active: () => queue.current?.value === value,
+      getImages: () => state.current.images,
+      getFiles: () => state.current.files,
+      appendImages: appendImageFiles,
+      appendFiles: appendGeneralFiles,
+      setImages: (next) => {
+        state.current.images = next;
+        state.current.onImagesChange(next);
+      },
+      setFiles: (next) => {
+        state.current.files = next;
+        state.current.onFilesChange(next);
+      }
+    });
+    queue.current = { scope, value };
+  }
+
+  return useCallback((selected: File[]) => {
+    const activeQueue = queue.current!.value;
+    return activeQueue.add(selected).catch((error) => {
+      if (queue.current?.value === activeQueue) state.current.onError(error);
+    });
+  }, []);
+}
+
+export function AttachmentPicker({
+  disabled = false,
+  className,
+  visibleLabel = false,
+  onAdd
+}: {
+  disabled?: boolean;
+  className?: string;
+  visibleLabel?: boolean;
+  onAdd: (files: File[]) => Promise<void>;
 }) {
   const input = useRef<HTMLInputElement>(null);
-
-  async function addFiles(selected: File[]) {
-    try {
-      const imageFiles = selected.filter((file) => file.type.startsWith("image/"));
-      const generalFiles = selected.filter(
-        (file) => !file.type.startsWith("image/")
-      );
-      if (imageFiles.length > 0) {
-        onImagesChange(await appendImageFiles(images, imageFiles));
-      }
-      if (generalFiles.length > 0) {
-        onFilesChange(appendGeneralFiles(files, generalFiles));
-      }
-    } catch (error) {
-      onError(error);
-    }
-  }
 
   function selectFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (selected.length > 0) void addFiles(selected);
+    if (selected.length > 0) void onAdd(selected);
   }
 
   return (
@@ -80,6 +176,7 @@ export function AttachmentPicker({
         onChange={selectFiles}
       />
       <IconButton
+        className={className}
         label={t("添加附件")}
         tooltip={t("添加图片、代码、文档或日志")}
         variant="toolbar"
@@ -87,7 +184,18 @@ export function AttachmentPicker({
         disabled={disabled}
         onClick={() => input.current?.click()}
       >
-        <Paperclip size={15} />
+        {visibleLabel ? (
+          <Paperclip size={15} />
+        ) : (
+          <>
+            <Paperclip
+              className={ui("desktop-attachment-icon")}
+              size={15}
+            />
+            <Plus className={ui("mobile-attachment-icon")} size={24} />
+          </>
+        )}
+        {visibleLabel ? <span>{t("添加附件")}</span> : null}
       </IconButton>
     </>
   );

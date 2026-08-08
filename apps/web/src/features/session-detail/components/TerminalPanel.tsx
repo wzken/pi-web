@@ -15,6 +15,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, IconButton, useToast } from "../../../components";
 import { t } from "../../../i18n";
+import {
+  createSessionHeartbeat,
+  type SessionHeartbeat
+} from "../../../session-realtime";
 import { ui } from "../../../ui";
 
 type TerminalStatus =
@@ -40,6 +44,28 @@ type TerminalMessage =
   | { type: "exit"; exitCode: number; signal?: number }
   | { type: "error"; code: string; message: string }
   | { type: "pong"; at: number };
+
+interface TerminalHeartbeatSocket {
+  readonly readyState: number;
+  send(value: string): void;
+  close(): void;
+}
+
+export function createTerminalSocketHeartbeat(
+  socket: TerminalHeartbeatSocket,
+  openState = WebSocket.OPEN
+): SessionHeartbeat {
+  return createSessionHeartbeat({
+    sendPing: () => {
+      if (socket.readyState === openState) {
+        socket.send(JSON.stringify({ type: "ping" }));
+      }
+    },
+    onTimeout: () => {
+      if (socket.readyState === openState) socket.close();
+    }
+  });
+}
 
 export function TerminalPanel({
   sessionId,
@@ -169,15 +195,22 @@ export function TerminalPanel({
   useEffect(() => {
     stopped.current = false;
     let retryMs = 500;
+    let heartbeat: SessionHeartbeat | null = null;
 
     function connect() {
       if (stopped.current) return;
+      heartbeat?.stop();
+      heartbeat = null;
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${location.host}/api/terminal`);
+      let socketHeartbeat: SessionHeartbeat | null = null;
       socketRef.current = socket;
       if (terminalIdRef.current) setStatus("connecting");
       socket.addEventListener("open", () => {
         retryMs = 500;
+        socketHeartbeat = createTerminalSocketHeartbeat(socket);
+        heartbeat = socketHeartbeat;
+        socketHeartbeat.start();
         if (terminalIdRef.current) {
           send({
             type: "attach",
@@ -192,7 +225,9 @@ export function TerminalPanel({
       socket.addEventListener("message", (event) => {
         const message = parseTerminalMessage(event.data);
         if (!message) return;
-        if (message.type === "ready") {
+        if (message.type === "pong") {
+          socketHeartbeat?.acknowledge();
+        } else if (message.type === "ready") {
           stopRequested.current = false;
           terminalIdRef.current = message.terminalId;
           storeTerminalId(sessionId, message.terminalId);
@@ -225,6 +260,9 @@ export function TerminalPanel({
         }
       });
       socket.addEventListener("close", () => {
+        socketHeartbeat?.stop();
+        if (heartbeat === socketHeartbeat) heartbeat = null;
+        socketHeartbeat = null;
         if (stopped.current) return;
         socketRef.current = null;
         if (terminalIdRef.current) setStatus("reconnecting");
@@ -236,6 +274,7 @@ export function TerminalPanel({
     connect();
     return () => {
       stopped.current = true;
+      heartbeat?.stop();
       if (reconnectTimer.current !== null) {
         window.clearTimeout(reconnectTimer.current);
       }

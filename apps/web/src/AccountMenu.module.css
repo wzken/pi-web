@@ -1,0 +1,186 @@
+.root {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.trigger {
+  display: grid;
+  width: 100%;
+  min-height: 40px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--text-soft);
+  cursor: pointer;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.trigger:focus-visible,
+.menu button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--lime) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.avatar {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.triggerCopy,
+.identity > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.triggerCopy strong,
+.identity strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerCopy small,
+.identity small {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerChevron {
+  color: var(--text-dim);
+  transform: rotate(-90deg);
+  transition: transform 140ms ease;
+}
+
+.trigger[aria-expanded="true"] .triggerChevron {
+  transform: rotate(90deg);
+}
+
+.menu {
+  position: absolute;
+  z-index: 140;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 208px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text-soft);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 34%);
+  backdrop-filter: blur(18px);
+}
+
+.identity {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.menu button {
+  display: grid;
+  width: 100%;
+  min-height: 40px;
+  grid-template-columns: 18px minmax(0, 1fr) 15px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text-soft);
+  cursor: pointer;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  color: var(--text);
+  background: var(--panel-3);
+}
+
+.separator {
+  height: 1px;
+  margin: 5px 7px;
+  background: var(--line-soft);
+}
+
+.chevron {
+  color: var(--text-dim);
+}
+
+.menu .danger {
+  color: #ff8585;
+}
+
+@media (max-width: 760px) {
+  .root {
+    width: 52px;
+  }
+
+  .trigger {
+    width: 52px;
+    min-height: 52px;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--panel-3);
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .triggerCopy,
+  .triggerChevron {
+    display: none;
+  }
+
+  .menu {
+    position: fixed;
+    right: 12px;
+    bottom: 76px;
+    left: auto;
+    width: min(300px, calc(100vw - 24px));
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .menu button {
+    min-height: 48px;
+    font-size: 14px;
+  }
+}

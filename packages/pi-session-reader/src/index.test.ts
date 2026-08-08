@@ -1,8 +1,24 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { clearSessionCache, readPiSession } from "./index.js";
+
+const sessionStatOverrides = vi.hoisted(
+  () => new Map<string, { size: number; mtimeMs: number }>()
+);
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    stat: async (path: Parameters<typeof actual.stat>[0]) => {
+      const result = await actual.stat(path);
+      const override = sessionStatOverrides.get(String(path));
+      return override ? Object.assign(result, override) : result;
+    }
+  };
+});
 
 async function writeSession(records: unknown[]): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "pi-web-session-"));
@@ -149,6 +165,55 @@ describe("Pi session reader", () => {
       cachedTokens: 2,
       reportedCost: 0.05
     });
+
+    result.usage.inputTokens = 999;
+    const cachedResult = await readPiSession(file);
+    expect(cachedResult.usage.inputTokens).toBe(10);
+    expect(cachedResult.usage).not.toBe(result.usage);
+  });
+
+  it("evicts the least recently used sessions when the byte budget is exceeded", async () => {
+    clearSessionCache();
+    const now = new Date().toISOString();
+    const records = [
+      { type: "session", version: 3, id: "session", timestamp: now, cwd: "/" },
+      {
+        type: "message",
+        id: "a",
+        parentId: null,
+        timestamp: now,
+        message: { role: "user", content: "hello" }
+      }
+    ];
+    const files = await Promise.all([
+      writeSession(records),
+      writeSession(records),
+      writeSession(records)
+    ]);
+    for (const file of files) {
+      sessionStatOverrides.set(file, {
+        size: 24 * 1024 * 1024,
+        mtimeMs: 1
+      });
+    }
+
+    try {
+      await readPiSession(files[0]!);
+      await readPiSession(files[1]!);
+      await readPiSession(files[0]!);
+      await readPiSession(files[2]!);
+
+      await writeFile(files[0]!, "{broken\n");
+      await writeFile(files[1]!, "{broken\n");
+
+      await expect(readPiSession(files[0]!)).resolves.toMatchObject({
+        messages: [{ role: "user", content: "hello" }]
+      });
+      await expect(readPiSession(files[1]!)).rejects.toThrow();
+    } finally {
+      clearSessionCache();
+      for (const file of files) sessionStatOverrides.delete(file);
+    }
   });
 
   it.each([

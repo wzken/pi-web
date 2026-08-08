@@ -10,7 +10,7 @@ import {
 import { api, isAbortError } from "./api";
 import { isCacheFresh } from "./cache-policy";
 
-export const sessionListTtlMs = 30_000;
+const sessionListTtlMs = 30_000;
 
 interface SessionListState {
   sessions: SessionRecord[] | null;

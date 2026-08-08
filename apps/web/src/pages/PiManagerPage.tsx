@@ -29,14 +29,18 @@ import {
   useToast
 } from "../components";
 import { t } from "../i18n";
+import { useSearchParams } from "../router";
 import { ui } from "../ui";
 import styles from "./PiManagerPage.module.css";
 
 type ManagerTab = "models" | "packages";
 
 export function PiManagerPage() {
+  const [searchParams] = useSearchParams();
+  const requestedTab: ManagerTab =
+    searchParams.get("tab") === "packages" ? "packages" : "models";
   const [status, setStatus] = useState<PiStatus | null>(null);
-  const [tab, setTab] = useState<ManagerTab>("models");
+  const [tab, setTab] = useState<ManagerTab>(requestedTab);
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,6 +62,10 @@ export function PiManagerPage() {
     void refresh(controller.signal);
     return () => controller.abort();
   }, [refresh]);
+
+  useEffect(() => {
+    setTab(requestedTab);
+  }, [requestedTab]);
 
   async function packageAction(
     action: "install" | "remove" | "update_all",

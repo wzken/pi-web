@@ -121,6 +121,34 @@ export class SessionSupervisor extends EventEmitter {
     return updated;
   }
 
+  pin(id: string, pinned: boolean, actor = "web"): SessionRecord {
+    const updated = this.#db.setSessionPinned(id, pinned, actor);
+    this.#emitEvent(id, "session.pinned", { pinned });
+    return updated;
+  }
+
+  assertDeletable(id: string): SessionRecord {
+    const current = this.#db.getSession(id);
+    if (
+      this.#workers.has(id) ||
+      this.#sessionStarts.has(id) ||
+      this.#resumeInputQueues.has(id)
+    ) {
+      throw new PiWebError(
+        "SESSION_BUSY",
+        "Close the active session before deleting it",
+        409
+      );
+    }
+    return current;
+  }
+
+  delete(id: string, actor = "web"): void {
+    const current = this.assertDeletable(id);
+    this.#db.deleteSession(current.id, actor);
+    this.#events.clear(id);
+  }
+
   async create(input: CreateSessionInput): Promise<SessionRecord> {
     this.#assertAcceptingStarts();
     const { mutationId, ...mutationPayload } = input;
@@ -132,6 +160,7 @@ export class SessionSupervisor extends EventEmitter {
         input.mutationId
       );
       if (existing) {
+        assertMutationSessionVisible(existing.session);
         assertMutationFingerprint(
           existing.fingerprint,
           mutationFingerprint
@@ -167,6 +196,7 @@ export class SessionSupervisor extends EventEmitter {
       });
       if (!result.created) {
         releaseSlot();
+        assertMutationSessionVisible(result.session);
         if (
           input.mutationId &&
           mutationFingerprint &&
@@ -218,6 +248,7 @@ export class SessionSupervisor extends EventEmitter {
             500
           );
         }
+        assertMutationSessionVisible(currentMutation.session);
         if (currentMutation.completed) return currentMutation.session;
         const pending = this.#sessionStarts.get(currentMutation.session.id);
         if (pending) {
@@ -1313,6 +1344,15 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : null;
+}
+
+function assertMutationSessionVisible(session: SessionRecord): void {
+  if (!session.deletedAt) return;
+  throw new PiWebError(
+    "SESSION_DELETED",
+    "The session created by this mutation was deleted",
+    410
+  );
 }
 
 function assertMutationFingerprint(

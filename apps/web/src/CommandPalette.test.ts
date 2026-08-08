@@ -1,9 +1,15 @@
 import { Search } from "lucide-react";
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CommandPalette,
   filterCommandItems,
   type CommandPaletteItem
 } from "./CommandPalette";
+import { BrowserRouter } from "./router";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const commands: CommandPaletteItem[] = [
   {
@@ -38,5 +44,30 @@ describe("filterCommandItems", () => {
   it("returns every command for an empty query and none for a miss", () => {
     expect(filterCommandItems(commands, "  ")).toEqual(commands);
     expect(filterCommandItems(commands, "不存在")).toEqual([]);
+  });
+});
+
+describe("CommandPalette", () => {
+  it("gives the search combobox an explicit accessible name", () => {
+    vi.stubGlobal("window", {
+      location: {
+        pathname: "/",
+        search: ""
+      }
+    });
+
+    const markup = renderToStaticMarkup(
+      createElement(
+        BrowserRouter,
+        null,
+        createElement(CommandPalette, {
+          open: true,
+          onClose: () => undefined
+        })
+      )
+    );
+
+    expect(markup).toContain('role="combobox"');
+    expect(markup).toContain('aria-label="搜索页面或最近会话…"');
   });
 });

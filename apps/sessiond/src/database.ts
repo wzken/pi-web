@@ -80,6 +80,14 @@ const MIGRATION_5 = `
 ALTER TABLE sessions ADD COLUMN create_mutation_completed INTEGER NOT NULL DEFAULT 1;
 `;
 
+const MIGRATION_6 = `
+ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN pinned_at TEXT;
+ALTER TABLE sessions ADD COLUMN deleted_at TEXT;
+CREATE INDEX sessions_visible_order_idx
+ON sessions(deleted_at, pinned DESC, pinned_at DESC, updated_at DESC);
+`;
+
 type Row = Record<string, unknown>;
 
 function monotonicNullable(
@@ -106,6 +114,7 @@ interface CreateSessionRowInput {
 
 export class SessionDatabase {
   readonly db: DatabaseSync;
+  #savepointSequence = 0;
 
   constructor(file: string) {
     mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
@@ -118,6 +127,20 @@ export class SessionDatabase {
 
   close(): void {
     this.db.close();
+  }
+
+  transaction<T>(operation: () => T): T {
+    const savepoint = `pi_web_${++this.#savepointSequence}`;
+    this.db.exec(`SAVEPOINT ${savepoint}`);
+    try {
+      const result = operation();
+      this.db.exec(`RELEASE ${savepoint}`);
+      return result;
+    } catch (error) {
+      this.db.exec(`ROLLBACK TO ${savepoint}`);
+      this.db.exec(`RELEASE ${savepoint}`);
+      throw error;
+    }
   }
 
   migrate(): void {
@@ -170,6 +193,17 @@ export class SessionDatabase {
         this.db
           .prepare(
             "INSERT INTO schema_migrations(version, applied_at) VALUES (5, ?)"
+          )
+          .run(nowIso());
+      }
+      const migration6 = this.db
+        .prepare("SELECT version FROM schema_migrations WHERE version = 6")
+        .get();
+      if (!migration6) {
+        this.db.exec(MIGRATION_6);
+        this.db
+          .prepare(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?)"
           )
           .run(nowIso());
       }
@@ -354,7 +388,9 @@ export class SessionDatabase {
   }
 
   getSession(id: string): SessionRecord {
-    const row = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as
+    const row = this.db
+      .prepare("SELECT * FROM sessions WHERE id = ? AND deleted_at IS NULL")
+      .get(id) as
       | Row
       | undefined;
     if (!row) throw new PiWebError("SESSION_NOT_FOUND", "Session not found", 404);
@@ -364,7 +400,12 @@ export class SessionDatabase {
   listSessions(limit = 100): SessionRecord[] {
     return (
       this.db
-        .prepare("SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?")
+        .prepare(
+          `SELECT * FROM sessions
+           WHERE deleted_at IS NULL
+           ORDER BY pinned DESC, pinned_at DESC, updated_at DESC
+           LIMIT ?`
+        )
         .all(Math.max(1, Math.min(limit, 500))) as Row[]
     ).map(mapSession);
   }
@@ -374,17 +415,55 @@ export class SessionDatabase {
     displayName: string,
     actor = "web"
   ): SessionRecord {
-    const updatedAt = nowIso();
-    const result = this.db
-      .prepare(
-        "UPDATE sessions SET display_name = ?, updated_at = ? WHERE id = ?"
-      )
-      .run(displayName, updatedAt, id);
-    if (result.changes === 0) {
-      throw new PiWebError("SESSION_NOT_FOUND", "Session not found", 404);
-    }
-    this.audit("session.rename", "success", actor, id, { displayName });
-    return this.getSession(id);
+    return this.transaction(() => {
+      const updatedAt = nowIso();
+      const result = this.db
+        .prepare(
+          `UPDATE sessions SET display_name = ?, updated_at = ?
+           WHERE id = ? AND deleted_at IS NULL`
+        )
+        .run(displayName, updatedAt, id);
+      if (result.changes === 0) {
+        throw new PiWebError("SESSION_NOT_FOUND", "Session not found", 404);
+      }
+      this.audit("session.rename", "success", actor, id, { displayName });
+      return this.getSession(id);
+    });
+  }
+
+  setSessionPinned(id: string, pinned: boolean, actor = "web"): SessionRecord {
+    return this.transaction(() => {
+      const updatedAt = nowIso();
+      const result = this.db
+        .prepare(
+          `UPDATE sessions
+           SET pinned = ?, pinned_at = ?, updated_at = ?
+           WHERE id = ? AND deleted_at IS NULL`
+        )
+        .run(pinned ? 1 : 0, pinned ? updatedAt : null, updatedAt, id);
+      if (result.changes === 0) {
+        throw new PiWebError("SESSION_NOT_FOUND", "Session not found", 404);
+      }
+      this.audit("session.pin", "success", actor, id, { pinned });
+      return this.getSession(id);
+    });
+  }
+
+  deleteSession(id: string, actor = "web"): void {
+    this.transaction(() => {
+      const deletedAt = nowIso();
+      const result = this.db
+        .prepare(
+          `UPDATE sessions
+           SET deleted_at = ?, pinned = 0, pinned_at = NULL, updated_at = ?
+           WHERE id = ? AND deleted_at IS NULL`
+        )
+        .run(deletedAt, deletedAt, id);
+      if (result.changes === 0) {
+        throw new PiWebError("SESSION_NOT_FOUND", "Session not found", 404);
+      }
+      this.audit("session.delete", "success", actor, id);
+    });
   }
 
   updateSession(
@@ -828,13 +907,16 @@ export class SessionDatabase {
         (
           this.db
             .prepare(
-              "SELECT COUNT(*) AS count FROM sessions WHERE status IN ('starting','running','stopping')"
+              `SELECT COUNT(*) AS count FROM sessions
+               WHERE deleted_at IS NULL
+                 AND status IN ('starting','running','stopping')`
             )
             .get() as { count: number }
         ).count
       ),
       sessionsToday: count(
-        "SELECT COUNT(*) AS count FROM sessions WHERE substr(started_at, 1, 10) = ?"
+        `SELECT COUNT(*) AS count FROM sessions
+         WHERE deleted_at IS NULL AND substr(started_at, 1, 10) = ?`
       ),
       cronRunsToday: count(
         "SELECT COUNT(*) AS count FROM scheduled_runs WHERE substr(scheduled_for, 1, 10) = ?"
@@ -847,7 +929,9 @@ export class SessionDatabase {
       recentProblems: (
         this.db
           .prepare(
-            "SELECT * FROM sessions WHERE status IN ('failed','interrupted') ORDER BY updated_at DESC LIMIT 8"
+            `SELECT * FROM sessions
+             WHERE deleted_at IS NULL AND status IN ('failed','interrupted')
+             ORDER BY updated_at DESC LIMIT 8`
           )
           .all() as Row[]
       ).map(mapSession)
@@ -915,6 +999,9 @@ function mapSession(row: Row): SessionRecord {
     toolCalls: Number(row.tool_calls),
     createdBy: String(row.created_by) as SessionRecord["createdBy"],
     scheduleRunId: nullableString(row.schedule_run_id),
+    pinned: Number(row.pinned) === 1,
+    pinnedAt: nullableString(row.pinned_at),
+    deletedAt: nullableString(row.deleted_at),
     updatedAt: String(row.updated_at)
   };
 }

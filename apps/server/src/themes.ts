@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
   mkdir,
+  open,
   readFile,
   readdir,
   rename,
@@ -509,10 +511,19 @@ export class ThemeService {
 
   private async writePreferences(preferences: ThemePreferences): Promise<void> {
     await this.ensureDirectories();
-    const temporary = `${this.preferencesFile}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(preferences, null, 2)}\n`, "utf8");
-    await rm(this.preferencesFile, { force: true });
-    await rename(temporary, this.preferencesFile);
+    const temporary = `${this.preferencesFile}.${randomUUID()}.tmp`;
+    try {
+      const file = await open(temporary, "wx", 0o600);
+      try {
+        await file.writeFile(`${JSON.stringify(preferences, null, 2)}\n`, "utf8");
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+      await rename(temporary, this.preferencesFile);
+    } finally {
+      await rm(temporary, { force: true });
+    }
   }
 
   private async clearBackgroundFiles(): Promise<void> {

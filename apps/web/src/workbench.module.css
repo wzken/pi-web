@@ -1792,7 +1792,7 @@
   }
 
   .sessions-workbench-content .page-header {
-    margin-bottom: 18px;
+    display: none;
   }
 
   .sessions-workbench-content .page-header > div > p:last-child,

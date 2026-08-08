@@ -171,14 +171,16 @@ export function Button({
   const control = (
     <MduiButtonHost
       {...customElementProps(props)}
-      className={joinClassNames(
-        mduiStyles.button,
-        legacyButtonClassName,
-        legacyButtonVariantClassNames[variant],
-        legacyButtonSizeClassNames[size],
-        fullWidth ? legacyButtonFullClassName : undefined,
-        active ? legacyActiveClassName : undefined,
-        className
+      className={ui(
+        joinClassNames(
+          mduiStyles.button,
+          legacyButtonClassName,
+          legacyButtonVariantClassNames[variant],
+          legacyButtonSizeClassNames[size],
+          fullWidth ? legacyButtonFullClassName : undefined,
+          active ? legacyActiveClassName : undefined,
+          className
+        )
       )}
       variant={buttonVariant(variant, active)}
       full-width={fullWidth}
@@ -264,7 +266,7 @@ export function ButtonLink({
   return tooltip ? <Tooltip content={tooltip}>{control}</Tooltip> : control;
 }
 
-export function Tooltip({
+function Tooltip({
   content,
   children,
   slot
@@ -377,15 +379,17 @@ export function IconButton({
   const control = (
     <MduiButtonIconHost
       {...customElementProps(props)}
-      className={joinClassNames(
-        mduiStyles.iconButton,
-        legacyButtonClassName,
-        legacyButtonVariantClassNames[variant],
-        legacyButtonSizeClassNames[size],
-        legacyButtonIconClassName,
-        legacyIconButtonClassName,
-        active ? legacyActiveClassName : undefined,
-        className
+      className={ui(
+        joinClassNames(
+          mduiStyles.iconButton,
+          legacyButtonClassName,
+          legacyButtonVariantClassNames[variant],
+          legacyButtonSizeClassNames[size],
+          legacyButtonIconClassName,
+          legacyIconButtonClassName,
+          active ? legacyActiveClassName : undefined,
+          className
+        )
       )}
       variant={
         variant === "secondary" || variant === "toolbar" && active

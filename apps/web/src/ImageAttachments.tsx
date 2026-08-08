@@ -1,16 +1,14 @@
-import { ImagePlus, X } from "lucide-react";
+import { X } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useRef,
-  useState,
-  type ChangeEvent
+  useState
 } from "react";
 import {
   maxPromptImageBytes,
   maxPromptImages,
   maxPromptImagesTotalBytes,
-  supportedPromptImageMimeTypes,
   isSupportedPromptImageMimeType
 } from "@pi-web/protocol/prompt-images";
 import { IconButton } from "./components";
@@ -115,60 +113,6 @@ export async function appendImageFiles(
     })
   );
   return [...current, ...added];
-}
-
-export function ImageAttachmentPicker({
-  images,
-  disabled = false,
-  onChange,
-  onError
-}: {
-  images: PendingImage[];
-  disabled?: boolean;
-  onChange: (images: PendingImage[]) => void;
-  onError: (error: unknown) => void;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-
-  async function addFiles(files: File[]) {
-    try {
-      onChange(await appendImageFiles(images, files));
-    } catch (error) {
-      onError(error);
-    }
-  }
-
-  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    if (files.length > 0) void addFiles(files);
-  }
-
-  return (
-    <>
-      <input
-        ref={input}
-        className={ui("visually-hidden")}
-        type="file"
-        accept={supportedPromptImageMimeTypes.join(",")}
-        multiple
-        disabled={disabled}
-        onChange={selectFiles}
-      />
-      <IconButton
-        label={t("添加图片")}
-        tooltip={t("添加图片（最多 {{count}} 张）", {
-          count: maxPromptImages
-        })}
-        variant="toolbar"
-        size="sm"
-        disabled={disabled}
-        onClick={() => input.current?.click()}
-      >
-        <ImagePlus size={15} />
-      </IconButton>
-    </>
-  );
 }
 
 export function ImageAttachmentTray({

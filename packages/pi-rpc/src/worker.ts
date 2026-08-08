@@ -21,6 +21,15 @@ export interface PiRpcWorkerOptions {
   maxLineBytes?: number;
 }
 
+const inheritedWorkerEnvironmentBlocklist = new Set([
+  "PI_WEB_ACCESS_KEY",
+  "PI_WEB_FAKE_PI",
+  "PI_WEB_SCHEDULER_EXTENSION",
+  "PI_WEB_SCHEDULER_SOCKET",
+  "PI_WEB_SCHEDULER_TOKEN",
+  "PI_WEB_SESSION_ID"
+]);
+
 export interface PiRpcResponse {
   type: "response";
   command: string;
@@ -82,7 +91,7 @@ export class PiRpcWorker extends EventEmitter {
 
     const child = spawn(this.#options.executable, args, {
       cwd: this.#options.cwd,
-      env: { ...process.env, ...this.#options.env },
+      env: workerEnvironment(process.env, this.#options.env),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       shell: false
@@ -258,6 +267,23 @@ export class PiRpcWorker extends EventEmitter {
       stderr: this.stderrTail
     });
   }
+}
+
+export function workerEnvironment(
+  inherited: NodeJS.ProcessEnv,
+  overrides: NodeJS.ProcessEnv = {}
+): NodeJS.ProcessEnv {
+  const environment = Object.fromEntries(
+    Object.entries(inherited).filter(
+      ([key]) => !inheritedWorkerEnvironmentBlocklist.has(key.toUpperCase())
+    )
+  );
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key.toUpperCase() !== "PI_WEB_ACCESS_KEY") {
+      environment[key] = value;
+    }
+  }
+  return environment;
 }
 
 function waitForChildTermination(

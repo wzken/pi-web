@@ -15,7 +15,7 @@ import {
 import { basename, dirname, extname, join, relative } from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PiWebConfig } from "@pi-web/config";
-import type { SessionRecord } from "@pi-web/protocol";
+import { isValidBase64, type SessionRecord } from "@pi-web/protocol";
 import {
   PiWebError,
   resolveAllowedDirectory,
@@ -24,7 +24,7 @@ import {
 import { z } from "zod";
 import { SessiondClient } from "./sessiond-client.js";
 
-export const maxAttachmentBytes = 16 * 1024 * 1024;
+const maxAttachmentBytes = 16 * 1024 * 1024;
 const attachmentSchema = z.object({
   mutationId: z.string().uuid().optional(),
   cwd: z.string().min(1).max(4096),
@@ -33,7 +33,7 @@ const attachmentSchema = z.object({
     .string()
     .min(1)
     .max(Math.ceil((maxAttachmentBytes * 4) / 3) + 4)
-    .regex(/^[A-Za-z0-9+/]*={0,2}$/)
+    .refine(isValidBase64, "Attachment data must be valid padded base64")
 });
 const workspaceEntryNameSchema = z
   .string()
@@ -327,15 +327,19 @@ export async function renameWorkspaceEntry(
       directory: sourceInfo.isDirectory()
     };
   }
-  if (await pathExists(target)) {
-    throw new PiWebError(
-      "ENTRY_ALREADY_EXISTS",
-      "A file or directory with that name already exists",
-      409
-    );
-  }
   try {
-    await rename(source, target);
+    if (sourceInfo.isDirectory()) {
+      if (await pathExists(target)) {
+        throw new PiWebError(
+          "ENTRY_ALREADY_EXISTS",
+          "A file or directory with that name already exists",
+          409
+        );
+      }
+      await rename(source, target);
+    } else {
+      await renameFileWithoutReplacing(source, target);
+    }
   } catch (error) {
     throw mapMutationError(error);
   }
@@ -344,6 +348,19 @@ export async function renameWorkspaceEntry(
     name: safeName,
     directory: sourceInfo.isDirectory()
   };
+}
+
+async function renameFileWithoutReplacing(
+  source: string,
+  target: string
+): Promise<void> {
+  await link(source, target);
+  try {
+    await unlink(source);
+  } catch (error) {
+    await unlink(target).catch(() => undefined);
+    throw error;
+  }
 }
 
 export function validateWorkspaceEntryName(value: string): string {

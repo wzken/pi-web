@@ -20,10 +20,10 @@ interface SessionEntry {
 interface CachedSession {
   signature: string;
   header: Record<string, unknown> | null;
-  allEntries: SessionEntry[];
-  activeEntries: SessionEntry[];
   contextEntries: SessionEntry[];
+  usage: UsageSummary;
   tree: SessionTreeSnapshot;
+  estimatedBytes: number;
 }
 
 export interface SessionReadOptions {
@@ -43,6 +43,8 @@ export interface SessionReadResult {
 
 const cache = new Map<string, CachedSession>();
 const MAX_CACHE_ITEMS = 64;
+const MAX_CACHE_ESTIMATED_BYTES = 128 * 1024 * 1024;
+let cacheEstimatedBytes = 0;
 
 export class PiSessionCursorError extends Error {
   constructor(message: string) {
@@ -59,13 +61,10 @@ export async function readPiSession(
   const signature = `${info.size}:${info.mtimeMs}`;
   let cached = cache.get(file);
   if (!cached || cached.signature !== signature) {
-    cached = await parseSession(file, signature);
-    cache.set(file, cached);
-    while (cache.size > MAX_CACHE_ITEMS) {
-      const oldest = cache.keys().next().value as string | undefined;
-      if (!oldest) break;
-      cache.delete(oldest);
-    }
+    cached = await parseSession(file, signature, info.size);
+    cacheSession(file, cached);
+  } else {
+    touchCachedSession(file, cached);
   }
 
   const limit = Math.max(1, Math.min(options.limit ?? 200, 1000));
@@ -83,14 +82,15 @@ export async function readPiSession(
     truncated: start > 0,
     nextCursor:
       start > 0 ? encodeCursor(cached.signature, start) : null,
-    usage: aggregateUsage(cached.allEntries),
+    usage: { ...cached.usage },
     tree: cached.tree
   };
 }
 
 async function parseSession(
   file: string,
-  signature: string
+  signature: string,
+  sourceBytes: number
 ): Promise<CachedSession> {
   const records: SessionEntry[] = [];
   const errors: Error[] = [];
@@ -146,14 +146,61 @@ async function parseSession(
         : undefined;
   }
   active.reverse();
+  const contextEntries = selectContextEntries(active);
+  const projectedTree = projectTree(tree, active);
   return {
     signature,
     header,
-    allEntries: tree,
-    activeEntries: active,
-    contextEntries: selectContextEntries(active),
-    tree: projectTree(tree, active)
+    contextEntries,
+    usage: aggregateUsage(tree),
+    tree: projectedTree,
+    estimatedBytes: estimateCachedSessionBytes(
+      sourceBytes,
+      contextEntries,
+      projectedTree
+    )
   };
+}
+
+function estimateCachedSessionBytes(
+  sourceBytes: number,
+  contextEntries: SessionEntry[],
+  tree: SessionTreeSnapshot
+): number {
+  const normalizedSourceBytes =
+    Number.isFinite(sourceBytes) && sourceBytes > 0 ? sourceBytes : 0;
+  return Math.min(
+    Number.MAX_SAFE_INTEGER,
+    normalizedSourceBytes * 2 +
+      contextEntries.length * 16 +
+      tree.nodes.length * 256
+  );
+}
+
+function touchCachedSession(file: string, cached: CachedSession): void {
+  cache.delete(file);
+  cache.set(file, cached);
+}
+
+function cacheSession(file: string, cached: CachedSession): void {
+  const previous = cache.get(file);
+  if (previous) {
+    cacheEstimatedBytes -= previous.estimatedBytes;
+    cache.delete(file);
+  }
+  cache.set(file, cached);
+  cacheEstimatedBytes += cached.estimatedBytes;
+
+  while (
+    cache.size > MAX_CACHE_ITEMS ||
+    cacheEstimatedBytes > MAX_CACHE_ESTIMATED_BYTES
+  ) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    const evicted = cache.get(oldest);
+    cache.delete(oldest);
+    if (evicted) cacheEstimatedBytes -= evicted.estimatedBytes;
+  }
 }
 
 function validateHeader(
@@ -439,6 +486,16 @@ function decodeCursor(
 }
 
 export function clearSessionCache(file?: string): void {
-  if (file) cache.delete(file);
-  else cache.clear();
+  if (file) {
+    const cached = cache.get(file);
+    if (!cached) return;
+    cache.delete(file);
+    cacheEstimatedBytes = Math.max(
+      0,
+      cacheEstimatedBytes - cached.estimatedBytes
+    );
+    return;
+  }
+  cache.clear();
+  cacheEstimatedBytes = 0;
 }
