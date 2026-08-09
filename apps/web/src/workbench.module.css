@@ -15,6 +15,7 @@
 }
 
 .conversation-pane {
+  min-height: 0;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--workbench-toolbar) minmax(0, 1fr) auto;
   background: var(--panel);
@@ -1311,6 +1312,38 @@
   text-transform: none;
 }
 
+.message-actions {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+  color: var(--text-dim);
+  opacity: 0.68;
+  transition: opacity 140ms ease;
+}
+
+.message:hover .message-actions,
+.message:focus-within .message-actions {
+  opacity: 1;
+}
+
+.message.user .message-actions {
+  justify-content: flex-end;
+}
+
+.message-actions .button,
+.message-actions .action-menu {
+  flex: 0 0 auto;
+}
+
+@media (hover: none) {
+  .message-actions {
+    min-height: 44px;
+    opacity: 1;
+  }
+}
+
 .markdown {
   color: var(--text-soft);
   font-size: 13px;
@@ -1792,7 +1825,7 @@
   }
 
   .sessions-workbench-content .page-header {
-    margin-bottom: 18px;
+    display: none;
   }
 
   .sessions-workbench-content .page-header > div > p:last-child,
@@ -2785,6 +2818,105 @@
   gap: 9px;
 }
 
+/* ChatGPT-style composer: content grows above a stable bottom action row. */
+.composer-box {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 10px 10px 8px 12px;
+  border-radius: 24px;
+}
+
+.composer-box textarea,
+.composer-box textarea:focus,
+.composer-box textarea:focus-visible {
+  width: 100%;
+  max-height: 160px;
+  min-height: 26px;
+  padding: 3px 6px;
+  overflow-y: hidden;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.composer-toolbar,
+.composer-toolbar-start,
+.composer-toolbar-end {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.composer-toolbar {
+  min-height: 42px;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.composer-toolbar-start,
+.composer-toolbar-end {
+  gap: 5px;
+}
+
+.composer-toolbar .button,
+.composer-toolbar .tooltip .button {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.composer-toolbar > .composer-toolbar-end > .tooltip:last-child .button {
+  border: 0;
+  border-radius: 50%;
+  color: var(--lime-ink);
+  background: var(--lime);
+}
+
+.composer-toolbar .runtime-settings-trigger {
+  width: auto;
+  min-width: 68px;
+  padding-inline: 12px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: var(--panel-3);
+}
+
+.composer-toolbar .runtime-settings-trigger .button-content {
+  gap: 5px;
+}
+
+.composer-meta {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .composer-box {
+    min-height: 58px;
+    padding: 9px 8px 7px 10px;
+  }
+
+  .composer-box textarea,
+  .composer-box textarea:focus,
+  .composer-box textarea:focus-visible {
+    min-height: 27px;
+    padding-inline: 5px;
+    font-size: 16px;
+  }
+
+  .composer-toolbar .button,
+  .composer-toolbar .tooltip .button {
+    width: 42px;
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .composer-toolbar .runtime-settings-trigger {
+    width: auto;
+    min-width: 64px;
+  }
+}
+
 @media (max-width: 760px) {
   .image-attachment {
     width: 132px;
@@ -2801,5 +2933,255 @@
 
   .session-retry .button {
     padding-inline: 8px;
+  }
+}
+
+.message-image-button {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: min(100%, 760px);
+  margin: 9px 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  cursor: zoom-in;
+  background: var(--panel-2);
+}
+
+.message-image-button:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 3px;
+}
+
+.message-image-button:disabled {
+  cursor: default;
+}
+
+.message-image-button .message-image {
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.message-image-loading,
+.message-image-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+  background: rgb(0 0 0 / 36%);
+  font-size: 11px;
+}
+
+.message-image-loading svg {
+  animation: attachment-loading-spin 850ms linear infinite;
+}
+
+.message-image-expand {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 50%;
+  color: #fff;
+  background: rgb(0 0 0 / 52%);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.message-image-button:hover .message-image-expand,
+.message-image-button:focus-visible .message-image-expand {
+  opacity: 1;
+}
+
+.message-image-dialog {
+  display: grid;
+  min-height: 0;
+  max-height: calc(100dvh - 72px);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.message-image-dialog-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.message-image-dialog-heading h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.message-image-dialog-canvas {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  overflow: auto;
+  padding-top: 14px;
+}
+
+.message-image-dialog-canvas img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 150px);
+  object-fit: contain;
+}
+
+@media (hover: none), (max-width: 760px) {
+  .message-image-expand {
+    opacity: 1;
+  }
+}
+
+/* Unified attachment and expansion behavior for both composer surfaces. */
+.composer,
+.home-composer,
+.composer-box {
+  position: relative;
+}
+
+.composer-box > .image-attachment-tray,
+.composer-box > .file-attachment-tray {
+  width: 100%;
+  padding: 0 42px 4px 2px;
+}
+
+.composer-box > textarea,
+.home-composer > textarea {
+  resize: none;
+  overflow-x: hidden;
+}
+
+.composer-box.composer-expanded {
+  min-height: min(56dvh, 520px);
+  max-height: min(72dvh, 680px);
+}
+
+.composer-box.composer-expanded > textarea {
+  min-height: min(40dvh, 390px);
+  max-height: none;
+}
+
+.composer-expand-toggle {
+  position: absolute;
+  z-index: 4;
+  top: 9px;
+  right: 10px;
+  width: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  border-radius: 50% !important;
+  color: var(--text-soft);
+  background: color-mix(in srgb, var(--panel-3) 88%, transparent);
+}
+
+.attachment-drop-overlay {
+  position: absolute;
+  z-index: 8;
+  inset: 6px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed color-mix(in srgb, var(--lime) 72%, var(--line));
+  border-radius: 18px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  font-size: 12px;
+  font-weight: 680;
+  pointer-events: none;
+}
+
+.attachment-drag-active .composer-box,
+.home-composer.attachment-drag-active {
+  border-color: var(--lime);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lime) 14%, transparent);
+}
+
+.image-attachment {
+  position: relative;
+  display: block;
+  width: 116px;
+  min-width: 116px;
+  height: 88px;
+  min-height: 88px;
+  padding: 0;
+  overflow: visible;
+  border-radius: 13px;
+}
+
+.image-attachment > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.image-attachment-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  color: #fff;
+  background: rgb(0 0 0 / 28%);
+  pointer-events: none;
+}
+
+.image-attachment-loading svg {
+  animation: attachment-loading-spin 850ms linear infinite;
+}
+
+.image-attachment > .tooltip {
+  position: absolute;
+  z-index: 2;
+  top: -8px;
+  right: -8px;
+}
+
+.image-attachment .button {
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 24%);
+}
+
+@keyframes attachment-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .composer-box.composer-expanded {
+    min-height: min(62dvh, 520px);
+    max-height: min(72dvh, 620px);
+  }
+
+  .composer-box.composer-expanded > textarea {
+    min-height: min(43dvh, 390px);
+  }
+
+  .image-attachment {
+    width: 108px;
+    min-width: 108px;
+    height: 82px;
+    min-height: 82px;
   }
 }

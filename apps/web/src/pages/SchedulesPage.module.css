@@ -483,7 +483,7 @@
   font-weight: 620;
 }
 
-.field input,
+.field input:not([type="range"]),
 .field textarea,
 .field select {
   width: 100%;
@@ -504,7 +504,7 @@
   resize: vertical;
 }
 
-.field input:focus,
+.field input:not([type="range"]):focus,
 .field textarea:focus,
 .field select:focus {
   border-color: var(--md-sys-color-primary, var(--lime));
@@ -557,12 +557,18 @@
 
 .dialogActions {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 9px;
   margin-top: 5px;
   padding-top: 17px;
   border-top: 1px solid
     var(--md-sys-color-outline-variant, var(--line-soft));
+}
+
+.dialogActions > * {
+  min-width: 0;
 }
 
 .historyDialog {
@@ -767,7 +773,7 @@
     z-index: 2;
     bottom: 0;
     margin: 8px -2px -2px;
-    padding: 14px 2px 2px;
+    padding: 14px 2px max(2px, env(safe-area-inset-bottom));
     background: var(--md-sys-color-surface-container-high, var(--panel-3));
   }
 }

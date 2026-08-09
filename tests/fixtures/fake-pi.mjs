@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 
 const args = process.argv.slice(2);
 const sessionIndex = args.indexOf("--session");
+const forkIndex = args.indexOf("--fork");
 const systemPromptIndex = args.indexOf("--append-system-prompt");
 const systemPrompt =
   systemPromptIndex >= 0 && args[systemPromptIndex + 1]
@@ -18,6 +19,8 @@ const sessionFile =
         process.env.PI_WEB_FAKE_SESSION_DIR || tmpdir(),
         `.fake-pi-${process.pid}.jsonl`
       );
+const forkSource =
+  forkIndex >= 0 && args[forkIndex + 1] ? args[forkIndex + 1] : null;
 const sessionId = randomUUID();
 let model = { provider: "fake", id: "deterministic", name: "Fake Pi" };
 let thinkingLevel = "medium";
@@ -29,6 +32,11 @@ let streaming = false;
 let delayedInitialState = false;
 const steeringQueue = [];
 const followUpQueue = [];
+
+if (forkSource && existsSync(forkSource) && !existsSync(sessionFile)) {
+  mkdirSync(dirname(sessionFile), { recursive: true });
+  writeFileSync(sessionFile, readFileSync(forkSource));
+}
 
 if (!existsSync(sessionFile)) {
   mkdirSync(dirname(sessionFile), { recursive: true });
@@ -185,7 +193,7 @@ function handle(request) {
       break;
     case "prompt":
       response(request.type, request);
-      runTurn(String(request.message || ""));
+      runTurn(String(request.message || ""), request.images);
       break;
     case "steer":
     case "follow_up": {
@@ -207,10 +215,28 @@ function handle(request) {
   }
 }
 
-function runTurn(text) {
+function runTurn(text, images = []) {
   aborted = false;
   streaming = true;
-  appendMessage({ role: "user", content: text });
+  const imageBlocks = Array.isArray(images)
+    ? images.filter(
+        (image) =>
+          image &&
+          image.type === "image" &&
+          typeof image.mimeType === "string" &&
+          typeof image.data === "string"
+      )
+    : [];
+  appendMessage({
+    role: "user",
+    content:
+      imageBlocks.length > 0
+        ? [
+            ...(text ? [{ type: "text", text }] : []),
+            ...imageBlocks
+          ]
+        : text
+  });
   send({ type: "agent_start" });
   send({ type: "turn_start" });
   send({ type: "message_start", message: { role: "assistant", content: [] } });
@@ -238,7 +264,11 @@ function runTurn(text) {
     });
   }
   if (text.includes("hang")) return;
-  const delay = text.includes("slow") ? 450 : 35;
+  const delay = text.includes("slow tool smoke")
+    ? 1_500
+    : text.includes("slow")
+      ? 450
+      : 35;
   setTimeout(() => {
     if (aborted) return;
     send({

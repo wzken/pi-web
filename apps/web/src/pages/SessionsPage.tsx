@@ -1,5 +1,6 @@
 import {
   Activity,
+  Menu,
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
@@ -72,6 +73,19 @@ export function SessionsPage() {
                 ) ?? null
               )
             }
+            onSessionPinned={(updated) =>
+              setSessions((current) =>
+                current?.map((session) =>
+                  session.id === updated.id ? updated : session
+                ) ?? null
+              )
+            }
+            onSessionDeleted={(sessionId) =>
+              setSessions(
+                (current) =>
+                  current?.filter((session) => session.id !== sessionId) ?? null
+              )
+            }
           />
           <button
             className={ui("workbench-rail-backdrop")}
@@ -90,14 +104,30 @@ export function SessionsPage() {
             aria-expanded={railOpen}
             onClick={() => setRailOpen((value) => !value)}
           >
-            {railOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+            <span className={ui("desktop-rail-toggle-icon")}>
+              {railOpen ? (
+                <PanelLeftClose size={17} />
+              ) : (
+                <PanelLeftOpen size={17} />
+              )}
+            </span>
+            <Menu
+              className={ui("mobile-rail-toggle-icon")}
+              size={22}
+              aria-hidden="true"
+            />
           </IconButton>
           <div className={ui("workbench-topbar-title")}>
             <strong>{t("会话")}</strong>
             <span>{t("全部工作区")}</span>
           </div>
           <div className={ui("workbench-topbar-actions")}>
-            <Button variant="toolbar" size="sm" onClick={() => navigate("/")}>
+            <Button
+              variant="toolbar"
+              size="sm"
+              aria-label={t("新建会话")}
+              onClick={() => navigate("/")}
+            >
               <MessageSquarePlus size={15} />
               <span>{t("新会话")}</span>
             </Button>
@@ -121,7 +151,10 @@ export function SessionsPage() {
           <h1>{t("会话")}</h1>
           <p>{t("这里用于查找和恢复历史；新会话从首页发送第一条任务后创建。")}</p>
         </div>
-        <Button onClick={() => navigate("/")}>
+        <Button
+          className={ui("sessions-page-primary-action")}
+          onClick={() => navigate("/")}
+        >
           <MessageSquarePlus size={17} />
           {t("发起新会话")}
         </Button>

@@ -152,6 +152,29 @@ describe("workspace file mutations", () => {
     expect(await readFile(join(cwd, "target.txt"), "utf8")).toBe("target");
   });
 
+  it("atomically rejects concurrent file renames to the same target", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "pi-web-files-"));
+    await writeFile(join(cwd, "first.txt"), "first");
+    await writeFile(join(cwd, "second.txt"), "second");
+
+    const results = await Promise.allSettled([
+      renameWorkspaceEntry(cwd, "first.txt", "winner.txt"),
+      renameWorkspaceEntry(cwd, "second.txt", "winner.txt")
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejection = results.find((result) => result.status === "rejected");
+    expect(rejection).toMatchObject({
+      reason: { code: "ENTRY_ALREADY_EXISTS", statusCode: 409 }
+    });
+    const remaining = await Promise.all(
+      ["first.txt", "second.txt", "winner.txt"].map(async (name) =>
+        await readFile(join(cwd, name), "utf8").catch(() => null)
+      )
+    );
+    expect(remaining.filter(Boolean).sort()).toEqual(["first", "second"]);
+  });
+
   it("rejects traversal, reserved names and overlong names", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "pi-web-files-"));
 

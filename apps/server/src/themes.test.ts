@@ -114,6 +114,23 @@ describe("ThemeService", () => {
     ).toMatchObject({ materialTheme: updated.preferences.materialTheme });
   });
 
+  it("keeps concurrent preference writes valid and independent", async () => {
+    const current = await service.catalog();
+    const modes = ["light", "dark", "system"] as const;
+
+    const results = await Promise.all(
+      modes.map(async (colorMode) =>
+        await service.updatePreferences({ ...current.preferences, colorMode })
+      )
+    );
+
+    expect(results).toHaveLength(modes.length);
+    const stored = JSON.parse(
+      await readFile(join(root, "config", "appearance.json"), "utf8")
+    ) as { colorMode?: string };
+    expect(modes).toContain(stored.colorMode);
+  });
+
   it("preserves shared material settings when a legacy client omits them", async () => {
     const current = await service.catalog();
     const customized = await service.updatePreferences({

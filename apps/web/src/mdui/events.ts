@@ -16,7 +16,8 @@ export function useMduiEvent<
   targetRef: RefObject<TTarget | null>,
   type: string,
   handler: MduiEventHandler<TEvent> | undefined,
-  options?: boolean | AddEventListenerOptions
+  options?: boolean | AddEventListenerOptions,
+  enabled = true
 ): void {
   const handlerRef = useRef(handler);
 
@@ -28,6 +29,7 @@ export function useMduiEvent<
   }, [handler]);
 
   useEffect(() => {
+    if (!enabled) return;
     const target = targetRef.current;
     if (!target) return;
 
@@ -39,5 +41,5 @@ export function useMduiEvent<
     return () => {
       target.removeEventListener(type, listener, options);
     };
-  }, [options, targetRef, type]);
+  }, [enabled, options, targetRef, type]);
 }

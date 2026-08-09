@@ -11,6 +11,7 @@ export interface PiRpcWorkerOptions {
   cwd: string;
   name: string;
   sessionPath?: string | null;
+  forkSessionPath?: string | null;
   model?: string | null;
   thinkingLevel?: ThinkingLevel | null;
   systemPrompt?: string | null;
@@ -20,6 +21,15 @@ export interface PiRpcWorkerOptions {
   requestTimeoutMs?: number;
   maxLineBytes?: number;
 }
+
+const inheritedWorkerEnvironmentBlocklist = new Set([
+  "PI_WEB_ACCESS_KEY",
+  "PI_WEB_FAKE_PI",
+  "PI_WEB_SCHEDULER_EXTENSION",
+  "PI_WEB_SCHEDULER_SOCKET",
+  "PI_WEB_SCHEDULER_TOKEN",
+  "PI_WEB_SESSION_ID"
+]);
 
 export interface PiRpcResponse {
   type: "response";
@@ -74,7 +84,17 @@ export class PiRpcWorker extends EventEmitter {
     }
     const args = [...(this.#options.prefixArgs ?? []), "--mode", "rpc", "--name", this.#options.name];
     if (this.#options.noSession) args.push("--no-session");
+    if (this.#options.sessionPath && this.#options.forkSessionPath) {
+      throw new PiWebError(
+        "INVALID_SESSION_SOURCE",
+        "A Pi worker cannot resume and fork a session at the same time",
+        400
+      );
+    }
     if (this.#options.sessionPath) args.push("--session", this.#options.sessionPath);
+    if (this.#options.forkSessionPath) {
+      args.push("--fork", this.#options.forkSessionPath);
+    }
     if (this.#options.extensionPath) args.push("--extension", this.#options.extensionPath);
     if (this.#options.systemPrompt?.trim()) {
       args.push("--append-system-prompt", this.#options.systemPrompt.trim());
@@ -82,7 +102,7 @@ export class PiRpcWorker extends EventEmitter {
 
     const child = spawn(this.#options.executable, args, {
       cwd: this.#options.cwd,
-      env: { ...process.env, ...this.#options.env },
+      env: workerEnvironment(process.env, this.#options.env),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       shell: false
@@ -258,6 +278,23 @@ export class PiRpcWorker extends EventEmitter {
       stderr: this.stderrTail
     });
   }
+}
+
+export function workerEnvironment(
+  inherited: NodeJS.ProcessEnv,
+  overrides: NodeJS.ProcessEnv = {}
+): NodeJS.ProcessEnv {
+  const environment = Object.fromEntries(
+    Object.entries(inherited).filter(
+      ([key]) => !inheritedWorkerEnvironmentBlocklist.has(key.toUpperCase())
+    )
+  );
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key.toUpperCase() !== "PI_WEB_ACCESS_KEY") {
+      environment[key] = value;
+    }
+  }
+  return environment;
 }
 
 function waitForChildTermination(

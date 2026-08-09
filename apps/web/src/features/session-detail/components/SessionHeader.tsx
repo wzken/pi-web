@@ -8,6 +8,7 @@ import {
   Download,
   Gauge,
   GitBranch,
+  GitFork,
   Info,
   PanelLeftClose,
   PanelLeftOpen,
@@ -17,6 +18,7 @@ import {
   RefreshCcw,
   Settings,
   TerminalSquare,
+  Trash2,
   X
 } from "lucide-react";
 import { formatNumber } from "../../../api";
@@ -30,7 +32,6 @@ import {
 } from "../../../components";
 import {
   extractLastUserPrompt,
-  extractRetryablePrompt,
   type RetryablePrompt
 } from "../../../session-messages";
 import type {
@@ -56,6 +57,9 @@ interface SessionHeaderProps {
   onToggleTree: () => void;
   onToggleTerminal: () => void;
   onExport: () => void;
+  onFork: () => Promise<void>;
+  onDelete: () => Promise<void>;
+  sessionMutationBusy: "fork" | "delete" | null;
   onControl: (action: SessionControlAction) => Promise<boolean>;
   onReplayLastPrompt: (
     prompt: RetryablePrompt,
@@ -79,6 +83,9 @@ export function SessionHeader({
   onToggleTree,
   onToggleTerminal,
   onExport,
+  onFork,
+  onDelete,
+  sessionMutationBusy,
   onControl,
   onReplayLastPrompt
 }: SessionHeaderProps) {
@@ -113,10 +120,6 @@ export function SessionHeader({
         ? t("已附加")
         : t("默认");
   const lastUserPrompt = extractLastUserPrompt(snapshot.messages);
-  const retryablePrompt = extractRetryablePrompt(
-    snapshot.messages,
-    session.status
-  );
   const canReplayLast =
     lastUserPrompt !== null &&
     ["waiting", "failed", "interrupted", "closed"].includes(session.status);
@@ -244,9 +247,19 @@ export function SessionHeader({
           {treeAvailable && (
             <ActionMenuItem active={treeOpen} onClick={onToggleTree}>
               <GitBranch size={14} />
-              {t("分支")}
+              {t("分支概览")}
             </ActionMenuItem>
           )}
+          <ActionMenuItem
+            disabled={
+              sessionMutationBusy !== null ||
+              ["starting", "running", "stopping"].includes(session.status)
+            }
+            onClick={() => void onFork()}
+          >
+            <GitFork size={14} />
+            {sessionMutationBusy === "fork" ? t("创建分支中…") : t("创建分支")}
+          </ActionMenuItem>
           <ActionMenuItem
             active={terminalOpen}
             title={`${t("终端")} (Ctrl/⌘+\`)`}
@@ -259,15 +272,15 @@ export function SessionHeader({
             <Download size={14} />
             {t("导出")}
           </ActionMenuItem>
-          {canReplayLast && !retryablePrompt && lastUserPrompt && (
+          {canReplayLast && lastUserPrompt && (
             <ActionMenuItem
-              disabled={replayBusy}
+              disabled={replayBusy || sessionMutationBusy !== null}
               onClick={() =>
                 void onReplayLastPrompt(lastUserPrompt, session.status)
               }
             >
               <RefreshCcw size={14} />
-              {replayBusy ? t("正在重新发送…") : t("重新发送最后一条")}
+              {replayBusy ? t("重试中…") : t("重试最后一条")}
             </ActionMenuItem>
           )}
           {active && (
@@ -289,6 +302,14 @@ export function SessionHeader({
               {controlBusy === "close" ? t("关闭中…") : t("关闭")}
             </ActionMenuItem>
           )}
+          <ActionMenuItem
+            danger
+            disabled={sessionMutationBusy !== null}
+            onClick={() => void onDelete()}
+          >
+            <Trash2 size={14} />
+            {sessionMutationBusy === "delete" ? t("删除中…") : t("删除")}
+          </ActionMenuItem>
         </ActionMenu>
       </div>
     </header>

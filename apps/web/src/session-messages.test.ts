@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   extractLastUserPrompt,
-  extractRetryablePrompt
+  extractRetryablePrompt,
+  messageToPlainText
 } from "./session-messages";
 
 describe("retryable session prompt", () => {
@@ -58,5 +59,19 @@ describe("retryable session prompt", () => {
         { role: "assistant", content: "also done" }
       ])
     ).toEqual({ message: "second", images: [] });
+  });
+});
+
+describe("messageToPlainText", () => {
+  it("keeps visible text and omits image and tool payloads", () => {
+    expect(messageToPlainText({
+      role: "assistant",
+      content: [
+        { type: "text", text: "first" },
+        { type: "image", mimeType: "image/png", data: "secret-base64" },
+        { type: "toolCall", name: "shell", arguments: { secret: true } },
+        { type: "text", text: "second" }
+      ]
+    })).toBe("first\n\nsecond");
   });
 });

@@ -3,7 +3,6 @@ import {
   Activity,
   Bot,
   CalendarClock,
-  LayoutDashboard,
   MessageSquarePlus,
   Search,
   Settings,
@@ -35,14 +34,6 @@ const pageCommands: CommandPaletteItem[] = [
     keywords: "home start chat 首页 开始",
     to: "/",
     icon: MessageSquarePlus
-  },
-  {
-    id: "dashboard",
-    label: "打开总览",
-    description: "查看运行状态和用量",
-    keywords: "dashboard overview usage 仪表盘 用量",
-    to: "/dashboard",
-    icon: LayoutDashboard
   },
   {
     id: "sessions",
@@ -202,6 +193,7 @@ export function CommandPalette({
           }}
           onKeyDown={handleKeyDown}
           placeholder={t("搜索页面或最近会话…")}
+          aria-label={t("搜索页面或最近会话…")}
           role="combobox"
           aria-expanded="true"
           aria-controls="command-palette-results"

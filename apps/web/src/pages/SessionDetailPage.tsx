@@ -195,7 +195,14 @@ export function SessionDetailPage() {
     [id]
   );
 
-  const { control, replayLastPrompt, exportSession } = useSessionControls({
+  const {
+    control,
+    replayLastPrompt,
+    exportSession,
+    forkSession,
+    deleteSession,
+    sessionMutationBusy
+  } = useSessionControls({
     sessionId: id,
     snapshot: currentSnapshot,
     dispatch,
@@ -234,6 +241,9 @@ export function SessionDetailPage() {
       onControl={control}
       onReplayLastPrompt={replayLastPrompt}
       onExport={exportSession}
+      onFork={forkSession}
+      onDelete={deleteSession}
+      sessionMutationBusy={sessionMutationBusy}
       onLoadEarlier={loadEarlier}
       onRetried={async () => {
         await refresh();

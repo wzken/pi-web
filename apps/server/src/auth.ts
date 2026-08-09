@@ -34,12 +34,15 @@ interface AttemptState {
 
 const LOGIN_ATTEMPT_TTL_MS = 60 * 60 * 1000;
 const MAX_LOGIN_ATTEMPT_REMOTES = 2048;
+export const maxLoginKeyCharacters = 1024;
+export const maxPendingLoginAttemptsPerRemote = 8;
 
 export class AuthManager {
   readonly #client: SessiondClient;
   readonly #sessions = new Map<string, LoginSession>();
   readonly #attempts = new Map<string, AttemptState>();
   readonly #attemptQueues = new Map<string, Promise<void>>();
+  readonly #pendingAttemptCounts = new Map<string, number>();
   readonly #sleep: (milliseconds: number) => Promise<void>;
   readonly #verify: typeof verifyAccessKey;
   #mutationQueue: Promise<void> = Promise.resolve();
@@ -98,6 +101,22 @@ export class AuthManager {
     key: string,
     remote: string
   ): Promise<{ token: string; delayMs: number }> {
+    if (key.length > maxLoginKeyCharacters) {
+      throw new PiWebError(
+        "INVALID_ACCESS_KEY",
+        "Access key is incorrect",
+        401
+      );
+    }
+    const pendingCount = this.#pendingAttemptCounts.get(remote) ?? 0;
+    if (pendingCount >= maxPendingLoginAttemptsPerRemote) {
+      throw new PiWebError(
+        "LOGIN_RATE_LIMITED",
+        "Too many login attempts are already pending",
+        429
+      );
+    }
+    this.#pendingAttemptCounts.set(remote, pendingCount + 1);
     const previous = this.#attemptQueues.get(remote) ?? Promise.resolve();
     const attempt = previous.then(() => this.#performLogin(key, remote));
     const tail = attempt.then(
@@ -108,6 +127,9 @@ export class AuthManager {
     try {
       return await attempt;
     } finally {
+      const remaining = (this.#pendingAttemptCounts.get(remote) ?? 1) - 1;
+      if (remaining > 0) this.#pendingAttemptCounts.set(remote, remaining);
+      else this.#pendingAttemptCounts.delete(remote);
       if (this.#attemptQueues.get(remote) === tail) {
         this.#attemptQueues.delete(remote);
       }
@@ -129,7 +151,6 @@ export class AuthManager {
     const generation = this.#generation;
     const valid =
       !!storedHash &&
-      key.length <= 1024 &&
       (await this.#verify(key, storedHash));
     return await this.#mutate(async () => {
       const accepted =
@@ -270,6 +291,15 @@ export class AuthManager {
   }
 
   async #persistSessions(): Promise<void> {
+    const now = Date.now();
+    for (const [tokenHash, session] of this.#sessions) {
+      if (
+        session.generation !== this.#generation ||
+        session.expiresAt <= now
+      ) {
+        this.#sessions.delete(tokenHash);
+      }
+    }
     const state: PersistedLoginSessions = {
       version: 1,
       keyFingerprint: this.#keyFingerprint,

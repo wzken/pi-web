@@ -1,16 +1,14 @@
-import { ImagePlus, X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useRef,
-  useState,
-  type ChangeEvent
+  useState
 } from "react";
 import {
   maxPromptImageBytes,
   maxPromptImages,
   maxPromptImagesTotalBytes,
-  supportedPromptImageMimeTypes,
   isSupportedPromptImageMimeType
 } from "@pi-web/protocol/prompt-images";
 import { IconButton } from "./components";
@@ -117,60 +115,6 @@ export async function appendImageFiles(
   return [...current, ...added];
 }
 
-export function ImageAttachmentPicker({
-  images,
-  disabled = false,
-  onChange,
-  onError
-}: {
-  images: PendingImage[];
-  disabled?: boolean;
-  onChange: (images: PendingImage[]) => void;
-  onError: (error: unknown) => void;
-}) {
-  const input = useRef<HTMLInputElement>(null);
-
-  async function addFiles(files: File[]) {
-    try {
-      onChange(await appendImageFiles(images, files));
-    } catch (error) {
-      onError(error);
-    }
-  }
-
-  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    if (files.length > 0) void addFiles(files);
-  }
-
-  return (
-    <>
-      <input
-        ref={input}
-        className={ui("visually-hidden")}
-        type="file"
-        accept={supportedPromptImageMimeTypes.join(",")}
-        multiple
-        disabled={disabled}
-        onChange={selectFiles}
-      />
-      <IconButton
-        label={t("添加图片")}
-        tooltip={t("添加图片（最多 {{count}} 张）", {
-          count: maxPromptImages
-        })}
-        variant="toolbar"
-        size="sm"
-        disabled={disabled}
-        onClick={() => input.current?.click()}
-      >
-        <ImagePlus size={15} />
-      </IconButton>
-    </>
-  );
-}
-
 export function ImageAttachmentTray({
   images,
   disabled = false,
@@ -184,28 +128,54 @@ export function ImageAttachmentTray({
   return (
     <div className={ui("image-attachment-tray")} aria-label={t("待发送图片")}>
       {images.map((image) => (
-        <figure className={ui("image-attachment")} key={image.id}>
-          <img
-            src={`data:${image.mimeType};base64,${image.data}`}
-            alt={image.name}
-          />
-          <figcaption title={image.name}>
-            <span>{image.name}</span>
-            <small>{formatFileSize(image.size)}</small>
-          </figcaption>
-          <IconButton
-            label={t("移除图片 {{name}}", { name: image.name })}
-            size="sm"
-            disabled={disabled}
-            onClick={() =>
-              onChange(images.filter((item) => item.id !== image.id))
-            }
-          >
-            <X size={12} />
-          </IconButton>
-        </figure>
+        <ImageAttachmentPreview
+          key={image.id}
+          image={image}
+          disabled={disabled}
+          onRemove={() =>
+            onChange(images.filter((item) => item.id !== image.id))
+          }
+        />
       ))}
     </div>
+  );
+}
+
+function ImageAttachmentPreview({
+  image,
+  disabled,
+  onRemove
+}: {
+  image: PendingImage;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <figure className={ui("image-attachment")}>
+      <img
+        src={`data:${image.mimeType};base64,${image.data}`}
+        alt={image.name}
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+      />
+      {!loaded && (
+        <span className={ui("image-attachment-loading")} aria-label={t("图片载入中")}>
+          <LoaderCircle size={20} aria-hidden="true" />
+        </span>
+      )}
+      <figcaption className={ui("visually-hidden")}>
+        {image.name} · {formatFileSize(image.size)}
+      </figcaption>
+      <IconButton
+        label={t("移除图片 {{name}}", { name: image.name })}
+        size="sm"
+        disabled={disabled}
+        onClick={onRemove}
+      >
+        <X size={12} />
+      </IconButton>
+    </figure>
   );
 }
 

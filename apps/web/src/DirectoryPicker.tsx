@@ -29,12 +29,18 @@ export function DirectoryPicker({
   roots,
   value,
   disabled = false,
-  onChange
+  autoOpen = false,
+  hideTrigger = false,
+  onChange,
+  onClose
 }: {
   roots: string[];
   value: string;
   disabled?: boolean;
+  autoOpen?: boolean;
+  hideTrigger?: boolean;
   onChange: (path: string) => void;
+  onClose?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [root, setRoot] = useState(roots[0] ?? "");
@@ -46,6 +52,7 @@ export function DirectoryPicker({
   const [error, setError] = useState("");
   const loadGeneration = useRef(0);
   const loadController = useRef<AbortController | null>(null);
+  const openedAutomatically = useRef(false);
 
   const load = useCallback(async (nextRoot: string, nextPath: string) => {
     if (!nextRoot) return;
@@ -84,6 +91,29 @@ export function DirectoryPicker({
     []
   );
 
+  const openPicker = useCallback(() => {
+    if (disabled || roots.length === 0) return;
+    const matchingRoot =
+      roots.find((candidate) => pathBelongsToRoot(value, candidate)) ??
+      roots[0] ?? "";
+    setRoot(matchingRoot);
+    setRelativePath("");
+    setOpen(true);
+    void load(matchingRoot, "");
+  }, [disabled, load, roots, value]);
+
+  const closePicker = useCallback(() => {
+    loadController.current?.abort();
+    setOpen(false);
+    onClose?.();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!autoOpen || openedAutomatically.current) return;
+    openedAutomatically.current = true;
+    openPicker();
+  }, [autoOpen, openPicker]);
+
   const crumbs = useMemo(() => {
     const segments = relativePath.split(/[\\/]/).filter(Boolean);
     return segments.map((name, index) => ({
@@ -107,7 +137,7 @@ export function DirectoryPicker({
         });
       }
       onChange(current.absolutePath);
-      setOpen(false);
+      closePicker();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -117,27 +147,20 @@ export function DirectoryPicker({
 
   return (
     <>
-      <Button
-        type="button"
-        className={ui("directory-picker-trigger")}
-        variant="toolbar"
-        size="sm"
-        disabled={disabled || roots.length === 0}
-        tooltip={roots.length === 0 ? t("先在设置中配置允许目录") : t("浏览工作目录")}
-        onClick={() => {
-          const matchingRoot =
-            roots.find((candidate) =>
-              pathBelongsToRoot(value, candidate)
-            ) ?? roots[0] ?? "";
-          setRoot(matchingRoot);
-          setRelativePath("");
-          setOpen(true);
-          void load(matchingRoot, "");
-        }}
-      >
-        <FolderOpen size={15} />
-        <span>{value ? compactPath(value) : t("选择目录")}</span>
-      </Button>
+      {!hideTrigger && (
+        <Button
+          type="button"
+          className={ui("directory-picker-trigger")}
+          variant="toolbar"
+          size="sm"
+          disabled={disabled || roots.length === 0}
+          tooltip={roots.length === 0 ? t("先在设置中配置允许目录") : t("浏览工作目录")}
+          onClick={openPicker}
+        >
+          <FolderOpen size={15} />
+          <span>{value ? compactPath(value) : t("选择目录")}</span>
+        </Button>
+      )}
 
       <Dialog
         open={open}
@@ -146,8 +169,7 @@ export function DirectoryPicker({
         maxWidth={620}
         onClose={() => {
           if (!choosing) {
-            loadController.current?.abort();
-            setOpen(false);
+            closePicker();
           }
         }}
       >
@@ -159,7 +181,7 @@ export function DirectoryPicker({
           <IconButton
             label={t("关闭目录选择")}
             disabled={choosing}
-            onClick={() => setOpen(false)}
+            onClick={closePicker}
           >
             <X size={17} />
           </IconButton>
@@ -249,7 +271,7 @@ export function DirectoryPicker({
           <Button
             variant="secondary"
             disabled={choosing}
-            onClick={() => setOpen(false)}
+            onClick={closePicker}
           >
             {t("取消")}
           </Button>

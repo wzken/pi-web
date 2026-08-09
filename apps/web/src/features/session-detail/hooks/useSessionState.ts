@@ -145,7 +145,7 @@ export function useSessionState(sessionId: string) {
     }
     latestSequence.current = next.sequence;
     invalidateHistoryRequests();
-    sessionStorage.setItem(`pi-web-seq:${requestedId}`, String(next.sequence));
+    writeSessionSequence(requestedId, next.sequence);
     dispatch({
       type: "projection.replaced",
       snapshot: next
@@ -174,10 +174,7 @@ export function useSessionState(sessionId: string) {
       }
       latestSequence.current = snapshot.sequence;
       invalidateHistoryRequests();
-      sessionStorage.setItem(
-        `pi-web-seq:${sessionId}`,
-        String(snapshot.sequence)
-      );
+      writeSessionSequence(sessionId, snapshot.sequence);
       dispatch({
         type: "projection.replaced",
         snapshot
@@ -205,10 +202,7 @@ export function useSessionState(sessionId: string) {
         return disposition;
       }
       latestSequence.current = event.sequence;
-      sessionStorage.setItem(
-        `pi-web-seq:${sessionId}`,
-        String(event.sequence)
-      );
+      writeSessionSequence(sessionId, event.sequence);
       dispatch({ type: "projection.event", event });
       return "next";
     },
@@ -218,7 +212,7 @@ export function useSessionState(sessionId: string) {
   const getResumeSequence = useCallback(
     () =>
       resolveAfterSequence(
-        sessionStorage.getItem(`pi-web-seq:${sessionId}`),
+        readSessionSequence(sessionId),
         latestSequence.current
       ),
     [sessionId]
@@ -228,7 +222,7 @@ export function useSessionState(sessionId: string) {
     projectionGeneration.current += 1;
     invalidateHistoryRequests();
     latestSequence.current = 0;
-    sessionStorage.removeItem(`pi-web-seq:${sessionId}`);
+    clearSessionSequence(sessionId);
     snapshotController.current?.abort();
     snapshotController.current = null;
     if (refreshTimer.current !== null) {
@@ -340,4 +334,56 @@ export function useSessionState(sessionId: string) {
     resetProjection,
     loadEarlier
   };
+}
+
+interface SessionSequenceStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function sessionSequenceKey(sessionId: string): string {
+  return `pi-web-seq:${sessionId}`;
+}
+
+function browserSessionStorage(): SessionSequenceStorage | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readSessionSequence(
+  sessionId: string,
+  storage: SessionSequenceStorage | null = browserSessionStorage()
+): string | null {
+  try {
+    return storage?.getItem(sessionSequenceKey(sessionId)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSessionSequence(
+  sessionId: string,
+  sequence: number,
+  storage: SessionSequenceStorage | null = browserSessionStorage()
+): void {
+  try {
+    storage?.setItem(sessionSequenceKey(sessionId), String(sequence));
+  } catch {
+    // Resume metadata is best-effort; the in-memory sequence remains authoritative.
+  }
+}
+
+export function clearSessionSequence(
+  sessionId: string,
+  storage: SessionSequenceStorage | null = browserSessionStorage()
+): void {
+  try {
+    storage?.removeItem(sessionSequenceKey(sessionId));
+  } catch {
+    // Projection reset remains valid even when browser storage is unavailable.
+  }
 }

@@ -33,6 +33,8 @@ import {
   useToast
 } from "../components";
 import { t } from "../i18n";
+import { ModelSelect } from "../ModelSelect";
+import { ThinkingLevelControl } from "../ThinkingLevelControl";
 import { ui } from "../ui";
 import styles from "./SchedulesPage.module.css";
 
@@ -599,41 +601,24 @@ function ScheduleDialog({
 
         <div className={styles.formSection}>
           <div className={styles.fieldGridThree}>
-            <label className={ui(styles.field, "field")}>
+            <div className={ui(styles.field, "field")}>
               <span>{t("模型")}</span>
-              <input
+              <ModelSelect
                 value={value.model ?? ""}
-                onChange={(event) =>
-                  patch("model", event.target.value || null)
-                }
-                placeholder={t("使用默认值")}
+                onChange={(next) => patch("model", next || null)}
+                onError={setError}
               />
-            </label>
-            <label className={ui(styles.field, "field")}>
+            </div>
+            <div className={ui(styles.field, "field")}>
               <span>{t("思考级别")}</span>
-              <select
+              <ThinkingLevelControl
                 value={value.thinkingLevel ?? ""}
-                onChange={(event) =>
-                  patch(
-                    "thinkingLevel",
-                    (event.target.value || null) as ThinkingLevel | null
-                  )
+                allowDefault
+                onChange={(next) =>
+                  patch("thinkingLevel", (next || null) as ThinkingLevel | null)
                 }
-              >
-                <option value="">{t("默认")}</option>
-                {[
-                  "off",
-                  "minimal",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ].map((level) => (
-                  <option key={level}>{level}</option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
             <label className={ui(styles.field, "field")}>
               <span>{t("超时（秒）")}</span>
               <input

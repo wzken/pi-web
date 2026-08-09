@@ -180,11 +180,13 @@ export class SessionFolderStore {
     auditType: string,
     change: (state: SessionFolderState) => void
   ): SessionFolderState {
-    const state = this.#read();
-    change(state);
-    this.#write(state);
-    this.#db.audit(auditType, "success", "web");
-    return structuredClone(state);
+    return this.#db.transaction(() => {
+      const state = this.#read();
+      change(state);
+      this.#write(state);
+      this.#db.audit(auditType, "success", "web");
+      return structuredClone(state);
+    });
   }
 
   #read(): SessionFolderState {

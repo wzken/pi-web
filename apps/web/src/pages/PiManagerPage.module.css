@@ -185,6 +185,87 @@
   font-weight: 660;
 }
 
+.updateNotice {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -4px 0 18px;
+  padding: 11px 13px;
+  border: 1px solid var(--md-sys-color-outline-variant, var(--line-soft));
+  border-radius: 17px;
+  background: var(--md-sys-color-surface-container-low, var(--panel));
+}
+
+.updateNotice[data-update-available="true"] {
+  border-color: color-mix(in srgb, var(--amber) 34%, var(--line));
+  background: color-mix(in srgb, var(--amber) 6%, var(--panel));
+}
+
+.updateNotice > div,
+.updateActions,
+.updateActions > a {
+  display: flex;
+  align-items: center;
+}
+
+.updateNotice > div {
+  min-width: 0;
+  gap: 10px;
+}
+
+.updateIcon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--md-sys-color-secondary, var(--teal));
+  background: var(--md-sys-color-secondary-container, var(--panel-2));
+}
+
+.updateNotice[data-update-available="true"] .updateIcon {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 12%, var(--panel-2));
+}
+
+.updateNotice strong,
+.updateNotice span {
+  display: block;
+}
+
+.updateNotice strong {
+  font-size: 11px;
+}
+
+.updateNotice > div > div > span {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.updateActions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.updateActions > a {
+  min-height: 32px;
+  gap: 5px;
+  padding: 0 10px;
+  border-radius: 9px;
+  color: var(--text-soft);
+  font-size: 9px;
+  text-decoration: none;
+}
+
+.updateActions > a:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
 .managerErrors {
   display: flex;
   align-items: flex-start;
@@ -242,6 +323,17 @@
   grid-template-columns: minmax(280px, 0.78fr) minmax(420px, 1.22fr);
   gap: 14px;
   outline: 0;
+}
+
+.modelDefaultsPanel {
+  grid-column: 1 / -1;
+}
+
+.modelDefaultsBody {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.25fr) minmax(240px, 0.75fr);
+  gap: 16px;
+  padding: 16px;
 }
 
 .panel {
@@ -385,11 +477,15 @@
   display: grid;
   min-width: 0;
   min-height: 58px;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 9px;
   padding: 9px 10px;
   border-radius: 14px;
+}
+
+.modelRow :global(.button) {
+  min-width: 72px;
 }
 
 .modelDot {
@@ -495,7 +591,7 @@
   font-weight: 620;
 }
 
-.field input {
+.field input:not([type="range"]) {
   width: 100%;
   min-width: 0;
   min-height: 46px;
@@ -508,7 +604,7 @@
   font-weight: 450;
 }
 
-.field input:focus {
+.field input:not([type="range"]):focus {
   border-color: var(--md-sys-color-primary, var(--lime));
   outline: 0;
   box-shadow: 0 0 0 2px
@@ -578,6 +674,10 @@
   .packagesLayout {
     grid-template-columns: 1fr;
   }
+
+  .modelDefaultsBody {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 620px) {
@@ -608,6 +708,24 @@
     margin: 12px 0 16px;
     padding: 14px;
     border-radius: 20px;
+  }
+
+  .updateNotice {
+    align-items: flex-start;
+  }
+
+  .updateNotice,
+  .updateActions {
+    flex-direction: column;
+  }
+
+  .updateActions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .updateActions > a {
+    justify-content: center;
   }
 
   .runtimeIcon {
@@ -665,6 +783,18 @@
 
   .providerChip {
     max-width: 94px;
+  }
+
+  .modelRow {
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+  }
+
+  .modelRow .providerChip {
+    display: none;
+  }
+
+  .modelRow :global(.button) {
+    min-width: 64px;
   }
 }
 

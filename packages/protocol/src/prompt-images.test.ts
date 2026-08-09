@@ -46,4 +46,11 @@ describe("prompt image validation", () => {
       promptSchema.parse({ images: Array.from({ length: 17 }, () => image) })
     ).toThrow();
   });
+
+  it.each(["A", "AAA", "A===", "AA=A", "===="])(
+    "rejects malformed base64 image data %s",
+    (data) => {
+      expect(() => promptSchema.parse({ images: [{ ...image, data }] })).toThrow();
+    }
+  );
 });

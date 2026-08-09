@@ -9,7 +9,6 @@ import {
   type PropsWithChildren
 } from "react";
 import { setTheme as setMduiTheme } from "mdui/functions/setTheme.js";
-import { t } from "./i18n";
 import type {
   InstalledTheme,
   ThemeCatalog,
@@ -46,7 +45,7 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-export const themeColorModeStorageKey = "pi-web:color-mode";
+const themeColorModeStorageKey = "pi-web:color-mode";
 
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [catalog, setCatalog] = useState<ThemeCatalog | null>(null);
@@ -299,11 +298,6 @@ export function themeTokensForScheme(
   return theme.tokens;
 }
 
-export function themeSchemeLabel(theme: InstalledTheme): string {
-  if (theme.schemaVersion === 2) return t("亮色与暗色");
-  return theme.colorScheme === "dark" ? t("暗色") : t("亮色");
-}
-
 export function resolveColorScheme(
   mode: ThemePreferences["colorMode"],
   systemColorScheme: "light" | "dark"
@@ -398,14 +392,9 @@ function applyTheme(
 
 export {
   defaultMaterialThemeSettings,
-  getThemeColorPreset,
-  materialThemeSettingsStorageKey,
   themeColorPresets,
-  themeColorRoles,
   type MaterialThemeSettings,
-  type ThemeColorPreset,
-  type ThemeColorRole,
-  type ThemeSeedColors
+  type ThemeColorRole
 } from "./theme-customization";
 
 function systemScheme(): "light" | "dark" {

@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import type { PiWebConfig } from "@pi-web/config";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionDatabase } from "./database.js";
 import {
   PiManager,
@@ -8,6 +8,8 @@ import {
   parsePackageList,
   validatePackageSource
 } from "./pi-manager.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Pi package argv validation", () => {
   it("allows documented sources and rejects shell-like input", () => {
@@ -62,13 +64,18 @@ describe("Pi package argv validation", () => {
   });
 
   it("runs global model and package commands from disposable non-project cwd", async () => {
-    const calls: Array<{ args: string[]; cwd: string | undefined }> = [];
+    vi.stubEnv("PI_WEB_ACCESS_KEY", "must-not-reach-pi");
+    const calls: Array<{
+      args: string[];
+      cwd: string | undefined;
+      env: NodeJS.ProcessEnv;
+    }> = [];
     const audit = vi.fn();
     const manager = new PiManager(
       { piExecutable: "pi" } as PiWebConfig,
       { audit } as unknown as SessionDatabase,
       async (_executable, args, options) => {
-        calls.push({ args, cwd: options.cwd });
+        calls.push({ args, cwd: options.cwd, env: options.env });
         return {
           stdout:
             args[0] === "list"
@@ -100,6 +107,7 @@ describe("Pi package argv validation", () => {
     );
     for (const call of globalCalls) {
       expect(call.cwd).toMatch(/pi-web-global-scope-/);
+      expect(call.env.PI_WEB_ACCESS_KEY).toBeUndefined();
       expect(
         await stat(call.cwd ?? "").then(
           () => true,
@@ -108,5 +116,37 @@ describe("Pi package argv validation", () => {
       ).toBe(false);
     }
     expect(audit).toHaveBeenCalledTimes(2);
+  });
+
+  it("checks the official Pi release endpoint and caches the reminder", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ version: "0.84.1", note: "New release" }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    ) as unknown as typeof fetch;
+    const manager = new PiManager(
+      { piExecutable: "pi" } as PiWebConfig,
+      { audit: vi.fn() } as unknown as SessionDatabase,
+      async () => ({ stdout: "Pi Coding Agent 0.82.0\n", stderr: "" }),
+      fetcher
+    );
+
+    await expect(manager.updateStatus()).resolves.toMatchObject({
+      currentVersion: "0.82.0",
+      latestVersion: "0.84.1",
+      updateAvailable: true,
+      changelogUrl: "https://pi.dev/changelog",
+      error: null
+    });
+    await manager.updateStatus();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://pi.dev/api/latest-version",
+      expect.objectContaining({ headers: { accept: "application/json" } })
+    );
+
+    await manager.updateStatus(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

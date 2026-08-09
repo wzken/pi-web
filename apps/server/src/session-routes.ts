@@ -37,6 +37,21 @@ export function registerSessionRoutes(
       });
     }
   );
+  app.put<{ Params: { id: string }; Body: unknown }>(
+    "/api/sessions/:id/pin",
+    async (request) =>
+      await client.request("sessions.pin", {
+        id: idSchema.parse(request.params.id),
+        pinned: z.object({ pinned: z.boolean() }).parse(request.body).pinned
+      })
+  );
+  app.delete<{ Params: { id: string } }>(
+    "/api/sessions/:id",
+    async (request) =>
+      await client.request("sessions.delete", {
+        id: idSchema.parse(request.params.id)
+      })
+  );
   app.get<{ Params: { id: string }; Querystring: { cursor?: string } }>(
     "/api/sessions/:id",
     async (request) =>
@@ -53,6 +68,17 @@ export function registerSessionRoutes(
         id: idSchema.parse(request.params.id),
         ...input
       });
+    }
+  );
+  app.post<{ Params: { id: string } }>(
+    "/api/sessions/:id/fork",
+    async (request, reply) => {
+      const session = await client.request<{ id: string }>(
+        "sessions.fork",
+        { id: idSchema.parse(request.params.id) },
+        120_000
+      );
+      return reply.code(201).send(session);
     }
   );
   app.post<{ Params: { id: string }; Body: unknown }>(

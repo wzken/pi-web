@@ -107,6 +107,13 @@ export function registerControlRoutes(
   app.get("/api/pi", async () =>
     await client.request("pi.status", undefined, 30_000)
   );
+  app.get<{ Querystring: { force?: string } }>("/api/pi/update", async (request) =>
+    await client.request(
+      "pi.update_status",
+      { force: request.query.force === "1" },
+      30_000
+    )
+  );
   app.post<{ Body: { action?: string; source?: string } }>(
     "/api/pi/packages",
     async (request) =>

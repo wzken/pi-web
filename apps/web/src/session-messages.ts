@@ -30,6 +30,19 @@ export function extractLastUserPrompt(
   return null;
 }
 
+export function messageToPlainText(message: PiMessage): string {
+  if (typeof message.content === "string") return message.content.trim();
+  if (Array.isArray(message.content)) {
+    const text = message.content
+      .filter((block) => block.type === "text" && typeof block.text === "string")
+      .map((block) => String(block.text).trim())
+      .filter(Boolean)
+      .join("\n\n");
+    if (text) return text;
+  }
+  return typeof message.summary === "string" ? message.summary.trim() : "";
+}
+
 function messageToPrompt(message: PiMessage): RetryablePrompt | null {
   if (typeof message.content === "string") {
     return message.content.trim()

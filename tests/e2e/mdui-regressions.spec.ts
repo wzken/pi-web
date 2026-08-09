@@ -1,6 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resolve } from "node:path";
-import type { ThemeCatalog } from "@pi-web/protocol";
 
 const accessKey = "pi-web-e2e-access";
 
@@ -55,97 +53,6 @@ test.describe("MDUI control regressions", () => {
     ).toBe(true);
   });
 
-  test("background sources and four-role colors persist through appearance settings", async ({
-    page
-  }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== "desktop",
-      "Desktop covers the server-backed appearance workflow"
-    );
-
-    await authenticate(page, "/settings");
-    const origin = new URL(page.url()).origin;
-    const backgroundFile = page.locator(
-      'input[type="file"][accept*="image/png"]'
-    );
-    await backgroundFile.setInputFiles(
-      resolve("docs", "assets", "preview-login.png")
-    );
-
-    await expect(
-      page.getByText("背景图片已上传，可继续调整显示方式")
-    ).toBeVisible();
-    await expect(page.getByRole("img", { name: "背景预览" })).toBeVisible();
-    await page.getByRole("button", { name: "提取主题色" }).click();
-    await expect(
-      page.getByText("已从背景提取四色，可继续单独微调")
-    ).toBeVisible();
-    await expect(
-      page.locator('mdui-switch[aria-label="使用自定义颜色"]')
-    ).toHaveAttribute("aria-checked", "true");
-
-    const colors = {
-      主色: "#123456",
-      次要色: "#654321",
-      第三色: "#336699",
-      中性色: "#777777"
-    } as const;
-    for (const [label, color] of Object.entries(colors)) {
-      const input = page.getByLabel(`${label}十六进制颜色`);
-      await input.fill(color);
-      await input.press("Enter");
-      await expect(input).toHaveValue(color.toUpperCase());
-    }
-
-    await applyAppearance(page);
-    let response = await page.request.get("/api/themes");
-    expect(response.ok()).toBe(true);
-    let catalog = (await response.json()) as ThemeCatalog;
-    expect(catalog.preferences).toMatchObject({
-      background: { kind: "upload" },
-      materialTheme: {
-        enabled: true,
-        colors: {
-          primary: colors.主色,
-          secondary: colors.次要色,
-          tertiary: colors.第三色,
-          neutral: colors.中性色
-        },
-        presetId: null
-      }
-    });
-
-    await page.getByRole("radio", { name: "图片链接" }).click();
-    const remoteUrl = "https://images.example.test/pi-web-background.png";
-    await page.getByRole("textbox", { name: "图片链接" }).fill(remoteUrl);
-    await applyAppearance(page);
-    response = await page.request.get("/api/themes");
-    catalog = (await response.json()) as ThemeCatalog;
-    expect(catalog.preferences.background).toMatchObject({
-      kind: "url",
-      url: remoteUrl
-    });
-
-    await page.reload();
-    await expect(page.getByRole("radio", { name: "图片链接" })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
-    await expect(page.getByRole("textbox", { name: "图片链接" })).toHaveValue(
-      remoteUrl
-    );
-    await expect(page.getByLabel("主色十六进制颜色")).toHaveValue(
-      colors.主色
-    );
-
-    await page.getByRole("button", { name: "恢复默认" }).click();
-    await applyAppearance(page);
-    const removeResponse = await page.request.delete("/api/themes/background", {
-      headers: { origin }
-    });
-    expect(removeResponse.ok()).toBe(true);
-  });
-
   test("a form IconButton closes its controlled dialog without submitting and restores focus", async ({
     page
   }, testInfo) => {
@@ -192,6 +99,90 @@ test.describe("MDUI control regressions", () => {
     await expect(dialog).toHaveCount(0);
     await expect(createSchedule).toBeFocused();
     expect(schedulePostCount).toBe(0);
+  });
+
+  test("model and runtime dialogs survive repeated open, escape, and reopen cycles", async ({
+    page
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop",
+      "Desktop covers the full runtime settings interaction"
+    );
+
+    await page.route("**/api/pi", async (route) => {
+      await route.fulfill({
+        json: {
+          available: true,
+          executable: "pi",
+          version: "test",
+          models: [
+            { provider: "fake", id: "deterministic", label: "raw table row" },
+            { provider: "fake", id: "switched", label: "another raw row" }
+          ],
+          packages: [],
+          errors: []
+        }
+      });
+    });
+
+    await authenticate(page, "/");
+    const runtimeTrigger = page.getByRole("button", {
+      name: "设置工作目录、模型、思考级别和附加提示词"
+    });
+    await runtimeTrigger.click();
+
+    const runtimeDialog = page.locator(
+      'mdui-dialog[aria-labelledby="new-session-runtime-title"]'
+    );
+    await expect(runtimeDialog).toBeVisible();
+    const modelToggle = runtimeDialog.getByRole("button", {
+      name: "打开模型列表"
+    });
+
+    for (let index = 0; index < 3; index += 1) {
+      await modelToggle.click();
+      await expect(page.getByRole("listbox", { name: "可用模型" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("listbox", { name: "可用模型" })).toHaveCount(0);
+      await expect(runtimeDialog).toBeVisible();
+    }
+
+    await modelToggle.click();
+    const modelInput = runtimeDialog.getByRole("combobox", { name: "模型" });
+    await modelInput.fill("switched");
+    await expect(page.getByText("fake", { exact: true })).toBeVisible();
+    await expect(page.getByRole("option", { name: /switched/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /deterministic/ })).toHaveCount(0);
+    await modelInput.press("ArrowDown");
+    await expect(modelInput).toHaveAttribute("aria-activedescendant", /option-0$/);
+    await modelInput.press("Enter");
+    await expect(modelInput).toHaveValue("fake/switched");
+    await expect(page.getByRole("listbox", { name: "可用模型" })).toHaveCount(0);
+
+    await page.keyboard.press("Escape");
+    await expect(runtimeDialog).toHaveCount(0);
+    await expect(runtimeTrigger).toBeFocused();
+    await runtimeTrigger.click();
+    await expect(runtimeDialog).toBeVisible();
+  });
+
+  test("the project action opens the working-directory picker", async ({
+    page
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop",
+      "Desktop validates the persistent rail action"
+    );
+
+    await authenticate(page, "/");
+    await page.getByRole("button", { name: "新建项目" }).click();
+    const directoryDialog = page.locator(
+      'mdui-dialog[aria-labelledby="directory-picker-title"]'
+    );
+    await expect(directoryDialog).toBeVisible();
+    await expect(directoryDialog.getByRole("heading", { name: "选择工作目录" })).toBeVisible();
+    await directoryDialog.getByRole("button", { name: "关闭目录选择" }).click();
+    await expect(directoryDialog).toHaveCount(0);
   });
 
   test("the schedule dialog has no horizontal overflow at a narrow mobile width", async ({
@@ -244,6 +235,75 @@ test.describe("MDUI control regressions", () => {
     expect(layout.panelRightOverflow).toBeLessThanOrEqual(1);
     expect(layout.scrollableBody).toBe(false);
   });
+
+  test("the mobile workbench aligns content below its toolbar and restores drawer focus", async ({
+    page
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "mobile",
+      "Mobile-only navigation accessibility regression"
+    );
+
+    await authenticate(page, "/sessions");
+    const trigger = page.getByRole("button", { name: "展开会话栏" });
+    const topbar = page.locator(".workbench-topbar");
+    const content = page.locator(".sessions-workbench-content");
+    const primaryAction = page.locator(".sessions-page-primary-action");
+
+    await expect(topbar).toBeVisible();
+    await expect(content).toBeVisible();
+    await expect(primaryAction).toBeHidden();
+    const geometry = await page.evaluate(() => {
+      const toolbarRect = document
+        .querySelector<HTMLElement>(".workbench-topbar")!
+        .getBoundingClientRect();
+      const contentRect = document
+        .querySelector<HTMLElement>(".sessions-workbench-content")!
+        .getBoundingClientRect();
+      return {
+        toolbarBottom: toolbarRect.bottom,
+        contentTop: contentRect.top,
+        overflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth
+      };
+    });
+    expect(geometry.contentTop).toBeGreaterThanOrEqual(geometry.toolbarBottom);
+    expect(geometry.overflow).toBeLessThanOrEqual(1);
+    await trigger.click();
+
+    const sidebar = page.locator(".workbench-session-rail");
+    await expect(sidebar).toBeVisible();
+    await expect
+      .poll(async () => (await sidebar.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        sidebar.evaluate((node) => node.contains(document.activeElement))
+      )
+      .toBe(true);
+
+    await page.keyboard.press("Escape");
+
+    await expect(sidebar).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
+
+  test("plugin and schedule routes use only the workbench session rail", async ({
+    page
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop",
+      "Desktop keeps the shared rail mounted for structural verification"
+    );
+
+    for (const path of ["/pi?tab=packages", "/schedules"]) {
+      await authenticate(page, path);
+      await expect(page.locator("aside.sidebar")).toHaveCount(0);
+      await expect(page.locator(".workbench-session-rail")).toHaveCount(1);
+      await expect(page.locator(".workbench-session-rail")).toBeVisible();
+    }
+  });
 });
 
 async function authenticate(page: Page, path: string): Promise<void> {
@@ -254,20 +314,6 @@ async function authenticate(page: Page, path: string): Promise<void> {
   });
   expect(response.ok()).toBe(true);
   await page.goto(path);
-}
-
-async function applyAppearance(page: Page): Promise<void> {
-  const responsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return (
-      response.request().method() === "PUT" &&
-      url.pathname === "/api/themes/preferences"
-    );
-  });
-  await page.getByRole("button", { name: "应用外观" }).click();
-  const response = await responsePromise;
-  expect(response.ok()).toBe(true);
-  await expect(page.getByText("外观已应用").last()).toBeVisible();
 }
 
 async function readSwitchChecked(

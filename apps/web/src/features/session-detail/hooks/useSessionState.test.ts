@@ -6,7 +6,10 @@ import type {
 import { describe, expect, it } from "vitest";
 import type { SessionDetailState } from "../types";
 import {
+  clearSessionSequence,
   initialSessionFirstItemIndex,
+  readSessionSequence,
+  writeSessionSequence,
   sessionDetailReducer
 } from "./useSessionState";
 
@@ -145,5 +148,40 @@ describe("sessionDetailReducer", () => {
     expect(next.firstItemIndex).toBe(
       initialSessionFirstItemIndex - older.messages.length
     );
+  });
+});
+
+describe("session sequence storage", () => {
+  it("stores and clears resume metadata under the session-specific key", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => void values.delete(key)
+    };
+
+    writeSessionSequence("session-1", 42, storage);
+    expect(readSessionSequence("session-1", storage)).toBe("42");
+
+    clearSessionSequence("session-1", storage);
+    expect(readSessionSequence("session-1", storage)).toBeNull();
+  });
+
+  it("keeps sequence metadata best-effort when storage is unavailable", () => {
+    const unavailable = {
+      getItem: (_key: string): string | null => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+      setItem: (_key: string, _value: string): void => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+      removeItem: (_key: string): void => {
+        throw new DOMException("blocked", "SecurityError");
+      }
+    };
+
+    expect(readSessionSequence("session-1", unavailable)).toBeNull();
+    expect(() => writeSessionSequence("session-1", 42, unavailable)).not.toThrow();
+    expect(() => clearSessionSequence("session-1", unavailable)).not.toThrow();
   });
 });

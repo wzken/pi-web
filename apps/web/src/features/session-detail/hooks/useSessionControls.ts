@@ -2,7 +2,7 @@ import type {
   SessionSnapshot,
   SessionStatus
 } from "@pi-web/protocol";
-import { useCallback, useRef, type Dispatch } from "react";
+import { useCallback, useRef, useState, type Dispatch } from "react";
 import { api, jsonBody } from "../../../api";
 import { useToast } from "../../../components";
 import { PendingMutationTracker } from "../../../mutation-id";
@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { safeFileName } from "../utils/session-formatting";
 import { t } from "../../../i18n";
+import { useNavigate } from "../../../router";
 
 interface UseSessionControlsOptions {
   sessionId: string;
@@ -28,10 +29,14 @@ export function useSessionControls({
   refresh
 }: UseSessionControlsOptions) {
   const toast = useToast();
+  const navigate = useNavigate();
   const controlInFlight = useRef(false);
   const replayInFlight = useRef(false);
   const resumeMutation = useRef(new PendingMutationTracker());
   const replayMutation = useRef(new PendingMutationTracker());
+  const [sessionMutationBusy, setSessionMutationBusy] = useState<
+    "fork" | "delete" | null
+  >(null);
 
   const control = useCallback(
     async (action: SessionControlAction): Promise<boolean> => {
@@ -139,5 +144,64 @@ export function useSessionControls({
     toast.push(t("会话快照已导出"));
   }, [snapshot, toast]);
 
-  return { control, replayLastPrompt, exportSession };
+  const forkSession = useCallback(async () => {
+    if (!snapshot || sessionMutationBusy) return;
+    if (
+      !window.confirm(
+        t("将从当前进度创建一个独立分支，并关闭当前会话 Worker。继续吗？")
+      )
+    ) {
+      return;
+    }
+    setSessionMutationBusy("fork");
+    dispatch({ type: "error.set", error: null });
+    try {
+      const forked = await api<{ id: string }>(
+        `/api/sessions/${sessionId}/fork`,
+        { method: "POST" }
+      );
+      toast.push(t("会话分支已创建"));
+      navigate(`/sessions/${forked.id}`);
+    } catch (error) {
+      dispatch({ type: "error.set", error });
+    } finally {
+      setSessionMutationBusy(null);
+    }
+  }, [dispatch, navigate, sessionId, sessionMutationBusy, snapshot, toast]);
+
+  const deleteSession = useCallback(async () => {
+    if (!snapshot || sessionMutationBusy) return;
+    if (
+      !window.confirm(
+        t("确定删除会话“{{name}}”？原始 Pi 记录仍会保留。", {
+          name: snapshot.session.displayName
+        })
+      )
+    ) {
+      return;
+    }
+    setSessionMutationBusy("delete");
+    dispatch({ type: "error.set", error: null });
+    try {
+      if (["starting", "running", "waiting", "stopping"].includes(snapshot.session.status)) {
+        await api(`/api/sessions/${sessionId}/close`, { method: "POST" });
+      }
+      await api(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      toast.push(t("会话已删除"));
+      navigate("/");
+    } catch (error) {
+      dispatch({ type: "error.set", error });
+    } finally {
+      setSessionMutationBusy(null);
+    }
+  }, [dispatch, navigate, sessionId, sessionMutationBusy, snapshot, toast]);
+
+  return {
+    control,
+    replayLastPrompt,
+    exportSession,
+    forkSession,
+    deleteSession,
+    sessionMutationBusy
+  };
 }

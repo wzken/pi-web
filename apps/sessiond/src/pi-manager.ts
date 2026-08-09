@@ -4,8 +4,8 @@ import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { PiWebConfig } from "@pi-web/config";
-import { PiRpcWorker } from "@pi-web/pi-rpc";
-import type { PiStatus } from "@pi-web/protocol";
+import { PiRpcWorker, workerEnvironment } from "@pi-web/pi-rpc";
+import type { PiStatus, PiUpdateInfo } from "@pi-web/protocol";
 import { PiWebError, safeErrorMessage } from "@pi-web/shared";
 import { SessionDatabase } from "./database.js";
 
@@ -39,15 +39,19 @@ export class PiManager {
   #config: PiWebConfig;
   readonly #db: SessionDatabase;
   readonly #execute: PiCommandExecutor;
+  readonly #fetch: typeof fetch;
+  #updateCache: { expiresAt: number; value: PiUpdateInfo } | null = null;
 
   constructor(
     config: PiWebConfig,
     db: SessionDatabase,
-    execute: PiCommandExecutor = defaultPiCommandExecutor
+    execute: PiCommandExecutor = defaultPiCommandExecutor,
+    fetcher: typeof fetch = fetch
   ) {
     this.#config = config;
     this.#db = db;
     this.#execute = execute;
+    this.#fetch = fetcher;
   }
 
   updateConfig(config: PiWebConfig): void {
@@ -103,6 +107,58 @@ export class PiManager {
     } catch (error) {
       this.#db.audit(`package.${input.action}`, "failure", actor);
       throw error;
+    }
+  }
+
+  async updateStatus(force = false): Promise<PiUpdateInfo> {
+    const now = Date.now();
+    if (!force && this.#updateCache && this.#updateCache.expiresAt > now) {
+      return this.#updateCache.value;
+    }
+    const checkedAt = new Date(now).toISOString();
+    const changelogUrl = "https://pi.dev/changelog";
+    let currentVersion: string | null = null;
+    try {
+      const installed = await this.#run(["--version"]);
+      currentVersion = extractSemver(installed.stdout);
+      const response = await this.#fetch("https://pi.dev/api/latest-version", {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (!response.ok) {
+        throw new Error(`Update service returned ${response.status}`);
+      }
+      const payload = (await response.json()) as Record<string, unknown>;
+      const latestVersion =
+        typeof payload.version === "string"
+          ? extractSemver(payload.version)
+          : null;
+      if (!latestVersion) throw new Error("Update service returned no version");
+      const value: PiUpdateInfo = {
+        currentVersion,
+        latestVersion,
+        updateAvailable:
+          currentVersion !== null &&
+          compareSemver(currentVersion, latestVersion) < 0,
+        checkedAt,
+        changelogUrl,
+        note: typeof payload.note === "string" ? payload.note.slice(0, 500) : null,
+        error: currentVersion ? null : "Unable to read the installed Pi version"
+      };
+      this.#updateCache = { expiresAt: now + 6 * 60 * 60_000, value };
+      return value;
+    } catch (error) {
+      const value: PiUpdateInfo = {
+        currentVersion,
+        latestVersion: null,
+        updateAvailable: false,
+        checkedAt,
+        changelogUrl,
+        note: null,
+        error: safeErrorMessage(error).slice(0, 500)
+      };
+      this.#updateCache = { expiresAt: now + 15 * 60_000, value };
+      return value;
     }
   }
 
@@ -173,7 +229,7 @@ export class PiManager {
       windowsHide: true,
       maxBuffer: 4 * 1024 * 1024,
       encoding: "utf8",
-      env: process.env
+      env: workerEnvironment(process.env)
     });
   }
 
@@ -209,6 +265,20 @@ export class PiManager {
       }
     }
   }
+}
+
+function extractSemver(value: string): string | null {
+  return value.match(/\b(\d+\.\d+\.\d+)(?:[-+][0-9A-Za-z.-]+)?\b/)?.[1] ?? null;
+}
+
+function compareSemver(left: string, right: string): number {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
 }
 
 export function validatePackageSource(source: string | undefined): string {

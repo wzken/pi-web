@@ -121,6 +121,34 @@ export class SessionSupervisor extends EventEmitter {
     return updated;
   }
 
+  pin(id: string, pinned: boolean, actor = "web"): SessionRecord {
+    const updated = this.#db.setSessionPinned(id, pinned, actor);
+    this.#emitEvent(id, "session.pinned", { pinned });
+    return updated;
+  }
+
+  assertDeletable(id: string): SessionRecord {
+    const current = this.#db.getSession(id);
+    if (
+      this.#workers.has(id) ||
+      this.#sessionStarts.has(id) ||
+      this.#resumeInputQueues.has(id)
+    ) {
+      throw new PiWebError(
+        "SESSION_BUSY",
+        "Close the active session before deleting it",
+        409
+      );
+    }
+    return current;
+  }
+
+  delete(id: string, actor = "web"): void {
+    const current = this.assertDeletable(id);
+    this.#db.deleteSession(current.id, actor);
+    this.#events.clear(id);
+  }
+
   async create(input: CreateSessionInput): Promise<SessionRecord> {
     this.#assertAcceptingStarts();
     const { mutationId, ...mutationPayload } = input;
@@ -132,6 +160,7 @@ export class SessionSupervisor extends EventEmitter {
         input.mutationId
       );
       if (existing) {
+        assertMutationSessionVisible(existing.session);
         assertMutationFingerprint(
           existing.fingerprint,
           mutationFingerprint
@@ -167,6 +196,7 @@ export class SessionSupervisor extends EventEmitter {
       });
       if (!result.created) {
         releaseSlot();
+        assertMutationSessionVisible(result.session);
         if (
           input.mutationId &&
           mutationFingerprint &&
@@ -201,6 +231,68 @@ export class SessionSupervisor extends EventEmitter {
     }
   }
 
+  async fork(id: string, actor = "web"): Promise<SessionRecord> {
+    this.#assertAcceptingStarts();
+    const source = this.#db.getSession(id);
+    if (["starting", "running", "stopping"].includes(source.status)) {
+      throw new PiWebError(
+        "SESSION_BUSY",
+        "Wait for the current turn to finish before branching the session",
+        409
+      );
+    }
+    if (this.#workers.has(id)) {
+      await this.close(id, actor);
+    }
+    const persisted = this.#db.getSession(id);
+    if (!persisted.piSessionReference) {
+      throw new PiWebError(
+        "SESSION_NOT_PERSISTED",
+        "This session has no Pi session file to branch",
+        409
+      );
+    }
+    await resolveAllowedDirectory(
+      persisted.cwd,
+      this.#config.allowedRoots,
+      this.#config.allowAnyDirectory
+    );
+    const releaseSlot = this.#reserveWorkerSlot();
+    let reservationTransferred = false;
+    try {
+      const displayName = `${persisted.displayName} · 分支`.slice(0, 160);
+      const branch = this.#db.createSession({
+        cwd: persisted.cwd,
+        displayName,
+        model: persisted.model,
+        thinkingLevel: persisted.thinkingLevel,
+        systemPrompt: persisted.systemPrompt,
+        createdBy: "web"
+      });
+      const admission = this.#beginSessionStart(
+        branch.id,
+        async () =>
+          await this.#startWithReservation(
+            branch,
+            undefined,
+            undefined,
+            undefined,
+            releaseSlot,
+            persisted.piSessionReference as string
+          )
+      );
+      if (admission.started) reservationTransferred = true;
+      else releaseSlot();
+      const created = await admission.promise;
+      this.#db.audit("session.fork", "success", actor, created.id, {
+        sourceSessionId: id
+      });
+      return created;
+    } finally {
+      if (!reservationTransferred) releaseSlot();
+    }
+  }
+
   async #recoverIncompleteCreate(
     input: CreateSessionInput,
     mutationFingerprint: string
@@ -218,6 +310,7 @@ export class SessionSupervisor extends EventEmitter {
             500
           );
         }
+        assertMutationSessionVisible(currentMutation.session);
         if (currentMutation.completed) return currentMutation.session;
         const pending = this.#sessionStarts.get(currentMutation.session.id);
         if (pending) {
@@ -771,13 +864,15 @@ export class SessionSupervisor extends EventEmitter {
     initialPrompt: string | undefined,
     initialImages: PromptImage[] | undefined,
     createMutationId: string | undefined,
-    releaseSlot: () => void
+    releaseSlot: () => void,
+    forkSessionPath?: string
   ): Promise<SessionRecord> {
     const startup = this.#start(
       session,
       initialPrompt,
       initialImages,
-      createMutationId
+      createMutationId,
+      forkSessionPath
     );
     releaseSlot();
     try {
@@ -792,7 +887,8 @@ export class SessionSupervisor extends EventEmitter {
     session: SessionRecord,
     initialPrompt?: string,
     initialImages: PromptImage[] = [],
-    createMutationId?: string
+    createMutationId?: string,
+    forkSessionPath?: string
   ): Promise<void> {
     if (this.#workers.has(session.id)) {
       throw new PiWebError(
@@ -813,7 +909,8 @@ export class SessionSupervisor extends EventEmitter {
       ...(fakePath ? { prefixArgs: [fakePath] } : {}),
       cwd: session.cwd,
       name: session.displayName,
-      sessionPath: session.piSessionReference,
+      sessionPath: forkSessionPath ? null : session.piSessionReference,
+      ...(forkSessionPath ? { forkSessionPath } : {}),
       model: session.model,
       thinkingLevel: session.thinkingLevel,
       systemPrompt: session.systemPrompt,
@@ -1313,6 +1410,15 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : null;
+}
+
+function assertMutationSessionVisible(session: SessionRecord): void {
+  if (!session.deletedAt) return;
+  throw new PiWebError(
+    "SESSION_DELETED",
+    "The session created by this mutation was deleted",
+    410
+  );
 }
 
 function assertMutationFingerprint(

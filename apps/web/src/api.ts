@@ -1,4 +1,4 @@
-export interface ApiErrorShape {
+interface ApiErrorShape {
   error?: {
     code?: string;
     message?: string;
@@ -37,6 +37,8 @@ const localizedApiErrors: Record<string, string> = {
   ENTRY_ALREADY_EXISTS: "同名文件或目录已经存在",
   WORKSPACE_ROOT_MUTATION_FORBIDDEN: "不能修改工作区根目录",
   SESSION_NOT_FOUND: "会话不存在",
+  SESSION_DELETED: "该请求对应的会话已被删除",
+  SESSION_BUSY: "请先关闭正在运行的会话，再将其删除",
   JOB_NOT_FOUND: "调度不存在",
   RUN_NOT_FOUND: "调度运行记录不存在",
   SESSIOND_UNAVAILABLE: "Session Daemon 暂不可用",

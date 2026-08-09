@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   base64ByteLength,
+  isValidBase64,
   maxPromptImageBytes,
   maxPromptImages,
   maxPromptImagesTotalBytes,
@@ -11,6 +12,7 @@ import { themeTokenNames } from "./theme-tokens.js";
 
 export {
   base64ByteLength,
+  isValidBase64,
   isSupportedPromptImageMimeType,
   maxPromptImageBytes,
   maxPromptImages,
@@ -99,6 +101,9 @@ export interface SessionRecord extends UsageSummary {
   lastEventSequence: number;
   createdBy: "web" | "cron" | "model";
   scheduleRunId: string | null;
+  pinned?: boolean;
+  pinnedAt?: string | null;
+  deletedAt?: string | null;
   updatedAt: string;
 }
 
@@ -277,6 +282,16 @@ export interface PiStatus {
   errors: string[];
 }
 
+export interface PiUpdateInfo {
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  checkedAt: string;
+  changelogUrl: string;
+  note: string | null;
+  error: string | null;
+}
+
 export const authRotateSchema = z
   .object({
     hash: z
@@ -343,7 +358,6 @@ export interface InternalEvent {
 
 export type InternalMessage = InternalRequest | InternalResponse | InternalEvent;
 
-const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
 const promptImageSchema = z.object({
   type: z.literal("image"),
   mimeType: z.enum(supportedPromptImageMimeTypes),
@@ -351,7 +365,7 @@ const promptImageSchema = z.object({
     .string()
     .min(1)
     .max(Math.ceil((maxPromptImageBytes * 4) / 3) + 4)
-    .regex(base64Pattern)
+    .refine(isValidBase64, "Image data must be valid padded base64")
 }).superRefine((image, context) => {
   if (base64ByteLength(image.data) > maxPromptImageBytes) {
     context.addIssue({

@@ -59,7 +59,11 @@ export async function createServer(options: {
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],
-        formAction: ["'self'"]
+        formAction: ["'self'"],
+        // Pi Web serves plain HTTP for direct LAN deployments. Helmet's
+        // default would otherwise rewrite every asset request to HTTPS and
+        // leave the application shell blank when TLS is not configured.
+        upgradeInsecureRequests: null
       }
     },
     crossOriginEmbedderPolicy: false

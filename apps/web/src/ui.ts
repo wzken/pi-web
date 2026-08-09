@@ -3,6 +3,7 @@ import workbenchStyles from "./workbench.module.css";
 import appearanceStyles from "./appearance.module.css";
 import material3Styles from "./material3.module.css";
 import shellWorkspaceStyles from "./shell-workspace.module.css";
+import codexShellStyles from "./codex-shell.module.css";
 
 export type ClassNameValue = string | false | null | undefined;
 
@@ -11,7 +12,8 @@ const styleModules: ReadonlyArray<Record<string, string>> = [
   workbenchStyles,
   appearanceStyles,
   material3Styles,
-  shellWorkspaceStyles
+  shellWorkspaceStyles,
+  codexShellStyles
 ];
 
 /**

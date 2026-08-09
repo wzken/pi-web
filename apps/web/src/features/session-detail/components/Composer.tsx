@@ -3,25 +3,33 @@ import type {
   SessionStatus,
   ThinkingLevel
 } from "@pi-web/protocol";
-import { CircleStop, Send } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { CircleStop, Maximize2, Minimize2, Send } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent
+} from "react";
 import { api, jsonBody } from "../../../api";
 import {
   draftAfterSuccessfulSubmit,
   resolveComposerSubmissionRoute,
   shouldSubmitComposerInput
 } from "../../../composer-input";
-import { Button } from "../../../components";
+import { Button, IconButton } from "../../../components";
 import { clearDraft, readDraft, writeDraft } from "../../../draft-store";
 import {
   appendAttachmentReferences,
   AttachmentPicker,
   FileAttachmentTray,
+  useAttachmentSelectionQueue,
+  useAttachmentDropZone,
   uploadAttachments,
   type PendingFileAttachment
 } from "../../../FileAttachments";
 import {
-  appendImageFiles,
   ImageAttachmentTray,
   useImageAttachmentDraft
 } from "../../../ImageAttachments";
@@ -59,14 +67,26 @@ export function Composer({
   const draftScope = `session:${sessionId}`;
   const [message, setMessage] = useState(() => readDraft(draftScope));
   const messageRef = useRef(message);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
     images,
     setImages,
     clear: clearImages
   } = useImageAttachmentDraft(draftScope);
   const [files, setFiles] = useState<PendingFileAttachment[]>([]);
+  const queueAttachments = useAttachmentSelectionQueue({
+    scope: draftScope,
+    images,
+    files,
+    onImagesChange: setImages,
+    onFilesChange: setFiles,
+    onError
+  });
   const [mode, setMode] = useState<"steer" | "follow_up">("steer");
   const [busy, setBusy] = useState(false);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(false);
   const [stopBusy, setStopBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const promptMutation = useRef(new PendingMutationTracker());
@@ -80,12 +100,40 @@ export function Composer({
   const resumesOnSubmit =
     connected && submissionRoute?.path === "resume";
   const effectiveMode = running ? mode : "prompt";
+  const addAttachments = useCallback(async (selected: File[]) => {
+    setAttachmentBusy(true);
+    try {
+      await queueAttachments(selected);
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }, [queueAttachments]);
+  const { dragActive, dropZoneProps } = useAttachmentDropZone({
+    disabled: !canCompose || busy,
+    onAdd: addAttachments
+  });
 
   useEffect(() => {
     if (!feedback) return;
     const timer = window.setTimeout(() => setFeedback(null), 4_200);
     return () => window.clearTimeout(timer);
   }, [feedback]);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const contentHeight = textarea.scrollHeight;
+    setCanExpand(contentHeight > 132 || images.length > 0 || files.length > 0);
+    if (expanded) {
+      textarea.style.height = "100%";
+      textarea.style.overflowY = "auto";
+      return;
+    }
+    const height = Math.min(Math.max(contentHeight, 26), 160);
+    textarea.style.height = `${height}px`;
+    textarea.style.overflowY = contentHeight > 160 ? "auto" : "hidden";
+  }, [expanded, files.length, images.length, message]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -101,7 +149,8 @@ export function Composer({
       (!value && images.length === 0 && files.length === 0) ||
       !canCompose ||
       route === null ||
-      busy
+      busy ||
+      attachmentBusy
     ) {
       return;
     }
@@ -177,9 +226,15 @@ export function Composer({
   }
 
   return (
-    <form className={ui("composer")} onSubmit={submit}>
-      <div className={ui("composer-modes")}>
-        {running ? (
+    <form
+      className={ui(`composer${dragActive ? " attachment-drag-active" : ""}`)}
+      aria-busy={busy || attachmentBusy}
+      onSubmit={submit}
+      {...dropZoneProps}
+    >
+      {(running || feedback) && (
+        <div className={ui("composer-modes")}>
+          {running && (
           <>
             <Button
               type="button"
@@ -202,57 +257,45 @@ export function Composer({
               {t("立即引导")}
             </Button>
           </>
-        ) : (
-          <span>
-            {status === "waiting"
-              ? t("发送下一条指令")
-              : status === "starting"
-                ? t("Pi 正在启动")
-                : status === "stopping"
-                  ? t("正在停止当前任务")
-                  : resumesOnSubmit
-                    ? t("发送指令并恢复会话")
-                    : connected
-                      ? t("恢复会话后才能发送")
-                      : t("等待实时连接")}
-          </span>
-        )}
-        {feedback && (
-          <span className={ui("composer-feedback")} role="status">
-            {feedback}
-          </span>
-        )}
-        <RuntimeSettings
-          sessionId={sessionId}
-          model={model}
-          thinkingLevel={thinkingLevel}
-          active={active && connected}
-          onError={onError}
-          onUpdated={onRuntimeUpdated}
-        />
-      </div>
+          )}
+          {feedback && (
+            <span className={ui("composer-feedback")} role="status">
+              {feedback}
+            </span>
+          )}
+        </div>
+      )}
       <QueuedMessagesPanel queuedMessages={queuedMessages} />
-      <ImageAttachmentTray
-        images={images}
-        disabled={busy}
-        onChange={setImages}
-      />
-      <FileAttachmentTray
-        files={files}
-        disabled={busy}
-        onChange={setFiles}
-      />
-      <div className={ui("composer-box")}>
-        <AttachmentPicker
+      <div className={ui(`composer-box${expanded ? " composer-expanded" : ""}`)}>
+        {dragActive && (
+          <div className={ui("attachment-drop-overlay")} role="status">
+            {t("拖放图片或文件到这里")}
+          </div>
+        )}
+        <ImageAttachmentTray
           images={images}
-          files={files}
-          disabled={!canCompose || busy}
-          onImagesChange={setImages}
-          onFilesChange={setFiles}
-          onError={onError}
+          disabled={busy}
+          onChange={setImages}
         />
+        <FileAttachmentTray
+          files={files}
+          disabled={busy}
+          onChange={setFiles}
+        />
+        {canExpand && (
+          <IconButton
+            className={ui("composer-expand-toggle")}
+            label={expanded ? t("收起输入框") : t("展开输入框")}
+            variant="toolbar"
+            size="sm"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </IconButton>
+        )}
         <textarea
-          rows={2}
+          ref={textareaRef}
+          rows={1}
           value={message}
           disabled={!canCompose}
           aria-label={t("给 Pi 一条新指令…")}
@@ -270,9 +313,7 @@ export function Composer({
               .filter((file): file is File => file !== null);
             if (files.length === 0) return;
             event.preventDefault();
-            void appendImageFiles(images, files)
-              .then(setImages)
-              .catch(onError);
+            void addAttachments(files);
           }}
           onKeyDown={(event) => {
             if (
@@ -300,60 +341,54 @@ export function Composer({
                   : t("实时连接恢复后可发送，草稿会保留…")
           }
         />
-        {running && (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            loading={stopBusy}
-            loadingLabel={t("停止中…")}
-            aria-label={t("停止当前任务")}
-            tooltip={t("停止当前任务")}
-            onClick={() => void stop()}
-          >
-            <CircleStop size={17} />
-          </Button>
-        )}
-        <Button
-          type="submit"
-          disabled={
-            (!message.trim() && images.length === 0 && files.length === 0) ||
-            !canCompose
-          }
-          loading={busy}
-          loadingLabel={t("发送中…")}
-          aria-label={
-            running
-              ? effectiveMode === "steer"
-                ? t("立即引导")
-                : t("排队发送")
-              : resumesOnSubmit
-                ? t("发送并恢复")
-              : t("发送")
-          }
-          tooltip={
-            running
-              ? effectiveMode === "steer"
-                ? t("立即引导当前任务")
-                : t("当前任务完成后发送")
-              : resumesOnSubmit
-                ? t("发送新指令并恢复会话")
-              : t("发送")
-          }
-          size="icon"
-        >
-          <Send size={17} />
-        </Button>
-      </div>
-      <div className={ui("composer-meta")}>
-        <span className={ui("composer-thinking-status")}>
-          {thinkingLevel ?? t("默认思考")}
-        </span>
-        <span className={ui("composer-shortcut-hint")}>
-          {running
-            ? t("Enter 按当前模式发送 · Alt+Enter 完成后排队 · Shift+Enter 换行")
-            : t("Enter 发送 · Shift+Enter 换行")}
-        </span>
+        <div className={ui("composer-toolbar")}>
+          <div className={ui("composer-toolbar-start")}>
+            <AttachmentPicker
+              disabled={!canCompose || busy || attachmentBusy}
+              onAdd={addAttachments}
+            />
+          </div>
+          <div className={ui("composer-toolbar-end")}>
+            <RuntimeSettings
+              sessionId={sessionId}
+              model={model}
+              thinkingLevel={thinkingLevel}
+              active={active && connected}
+              onError={onError}
+              onUpdated={onRuntimeUpdated}
+            />
+            {running ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="icon"
+                loading={stopBusy}
+                loadingLabel={t("停止中…")}
+                aria-label={t("停止当前任务")}
+                tooltip={t("停止当前任务")}
+                onClick={() => void stop()}
+              >
+                <CircleStop size={18} />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={
+                  (!message.trim() && images.length === 0 && files.length === 0) ||
+                  !canCompose ||
+                  attachmentBusy
+                }
+                loading={busy}
+                loadingLabel={t("发送中…")}
+                aria-label={resumesOnSubmit ? t("发送并恢复") : t("发送")}
+                tooltip={resumesOnSubmit ? t("发送新指令并恢复会话") : t("发送")}
+                size="icon"
+              >
+                <Send size={17} />
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </form>
   );

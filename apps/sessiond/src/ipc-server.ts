@@ -221,6 +221,20 @@ export class IpcServer {
           input.displayName
         );
       }
+      case "sessions.pin":
+        return this.#supervisor.pin(
+          stringParam(params, "id"),
+          z.boolean().parse(params.pinned)
+        );
+      case "sessions.delete": {
+        const id = stringParam(params, "id");
+        this.#supervisor.assertDeletable(id);
+        this.#db.transaction(() => {
+          this.#sessionFolders.assign(id, { folderId: null });
+          this.#supervisor.delete(id);
+        });
+        return { deleted: true };
+      }
       case "sessions.create": {
         const input = createSessionSchema.parse(params);
         return await this.#supervisor.create({
@@ -241,6 +255,8 @@ export class IpcServer {
           createdBy: "web"
         });
       }
+      case "sessions.fork":
+        return await this.#supervisor.fork(stringParam(params, "id"));
       case "sessions.resume": {
         const input = resumeSessionSchema.parse(params);
         return await this.#supervisor.resume(
@@ -347,6 +363,8 @@ export class IpcServer {
         return await this.#schedulerTool(params);
       case "pi.status":
         return await this.#piManager.status();
+      case "pi.update_status":
+        return await this.#piManager.updateStatus(Boolean(params.force));
       case "pi.package":
         return await this.#piManager.packageOperation({
           action: stringParam(params, "action") as
