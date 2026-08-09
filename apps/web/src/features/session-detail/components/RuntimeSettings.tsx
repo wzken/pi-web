@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, jsonBody } from "../../../api";
 import { Button, Dialog, IconButton } from "../../../components";
 import { ModelSelect } from "../../../ModelSelect";
+import { ThinkingLevelControl } from "../../../ThinkingLevelControl";
 import { t } from "../../../i18n";
 import { ui } from "../../../ui";
 
@@ -110,7 +111,7 @@ export function RuntimeSettings({
           </header>
 
           <div className={ui("runtime-config-grid")}>
-            <label className={ui("field")}>
+            <div className={ui("field")}>
               <span>{t("模型")}</span>
               <ModelSelect
                 value={modelValue}
@@ -121,33 +122,15 @@ export function RuntimeSettings({
                   if (event.key === "Enter") event.preventDefault();
                 }}
               />
-            </label>
-            <label className={ui("field")}>
+            </div>
+            <div className={ui("field")}>
               <span>{t("思考级别")}</span>
-              <select
+              <ThinkingLevelControl
                 value={thinkingValue}
                 disabled={!active || busy}
-                aria-label={t("思考级别")}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.preventDefault();
-                }}
-                onChange={(event) =>
-                  setThinkingValue(event.target.value as ThinkingLevel)
-                }
-              >
-                {[
-                  "off",
-                  "minimal",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ].map((level) => (
-                  <option key={level}>{level}</option>
-                ))}
-              </select>
-            </label>
+                onChange={(next) => setThinkingValue(next as ThinkingLevel)}
+              />
+            </div>
             {!active && (
               <p className={ui("runtime-config-note")}>
                 {t("先恢复会话，才能修改运行参数。")}

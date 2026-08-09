@@ -36,6 +36,7 @@ import {
 } from "../FileAttachments";
 import { PendingMutationTracker } from "../mutation-id";
 import { ModelSelect } from "../ModelSelect";
+import { ThinkingLevelControl } from "../ThinkingLevelControl";
 import { useNavigate, useSearchParams } from "../router";
 import { SessionNavigator, useWorkbenchRail } from "../SessionNavigator";
 import { useSessionList } from "../useSessionList";
@@ -433,7 +434,7 @@ export function HomePage() {
                     }}
                   />
                 </div>
-                <label className={ui("field")}>
+                <div className={ui("field")}>
                   <span>{t("模型")}</span>
                   <ModelSelect
                     value={model}
@@ -441,31 +442,16 @@ export function HomePage() {
                     onChange={setModel}
                     onError={setError}
                   />
-                </label>
-                <label className={ui("field")}>
+                </div>
+                <div className={ui("field")}>
                   <span>{t("思考级别")}</span>
-                  <select
+                  <ThinkingLevelControl
                     value={thinkingLevel}
                     disabled={busy}
-                    aria-label={t("思考级别")}
-                    onChange={(event) =>
-                      setThinkingLevel(event.target.value as ThinkingLevel | "")
-                    }
-                  >
-                    <option value="">{t("使用全局默认")}</option>
-                    {[
-                      "off",
-                      "minimal",
-                      "low",
-                      "medium",
-                      "high",
-                      "xhigh",
-                      "max"
-                    ].map((level) => (
-                      <option key={level}>{level}</option>
-                    ))}
-                  </select>
-                </label>
+                    allowDefault
+                    onChange={setThinkingLevel}
+                  />
+                </div>
                 <label className={ui("field runtime-prompt-field")}>
                   <span>{t("附加系统提示词")}</span>
                   <textarea

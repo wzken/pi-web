@@ -13,7 +13,10 @@ describe("ModelSelect", () => {
 
     expect(markup).toContain("<input");
     expect(markup).toContain('value="project-provider/project-model"');
-    expect(markup).toContain("<datalist");
+    expect(markup).toContain('role="combobox"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("打开模型列表");
+    expect(markup).not.toContain("<datalist");
     expect(markup).not.toContain("<select");
   });
 });

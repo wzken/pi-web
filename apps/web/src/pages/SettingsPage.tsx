@@ -33,6 +33,8 @@ import {
   type NotificationPreferences
 } from "../notifications";
 import { t } from "../i18n";
+import { ModelSelect } from "../ModelSelect";
+import { ThinkingLevelControl } from "../ThinkingLevelControl";
 import { LanguageSettings } from "../i18n/LanguageSettings";
 import { useNavigate } from "../router";
 import { ui } from "../ui";
@@ -330,39 +332,32 @@ export function SettingsPage() {
                 </div>
               </div>
               <div className={styles.fieldGrid}>
-                <label className={styles.field}>
+                <div className={styles.field}>
                   <span>{t("默认模型")}</span>
-                  <input
+                  <ModelSelect
                     value={settings.defaultModel ?? ""}
-                    onChange={(event) =>
+                    onChange={(next) =>
                       setSettings({
                         ...settings,
-                        defaultModel: event.target.value || null
+                        defaultModel: next || null
                       })
                     }
-                    placeholder="provider/model-id"
+                    onError={setError}
                   />
-                </label>
-                <label className={styles.field}>
+                </div>
+                <div className={styles.field}>
                   <span>{t("默认思考级别")}</span>
-                  <select
+                  <ThinkingLevelControl
                     value={settings.defaultThinkingLevel ?? ""}
-                    onChange={(event) =>
+                    allowDefault
+                    onChange={(next) =>
                       setSettings({
                         ...settings,
-                        defaultThinkingLevel: (event.target.value ||
-                          null) as ThinkingLevel | null
+                        defaultThinkingLevel: (next || null) as ThinkingLevel | null
                       })
                     }
-                  >
-                    <option value="">{t("Pi 默认")}</option>
-                    {["off", "minimal", "low", "medium", "high", "xhigh", "max"].map(
-                      (level) => (
-                        <option key={level}>{level}</option>
-                      )
-                    )}
-                  </select>
-                </label>
+                  />
+                </div>
               </div>
               <label className={styles.field}>
                 <span>{t("默认附加系统提示词")}</span>

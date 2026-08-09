@@ -198,8 +198,25 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await expect(page.locator(".workbench-system-prompt")).toHaveCount(0);
 
   if (testInfo.project.name === "desktop") {
-    await page.getByRole("link", { name: new RegExp(homePrompt) }).hover();
-    await page.getByRole("button", { name: `会话操作 ${homePrompt}` }).click();
+    const sessionLink = page.getByRole("link", { name: new RegExp(homePrompt) });
+    const sessionRow = sessionLink.locator("..");
+    await sessionLink.hover();
+    const rowAction = page.getByRole("button", { name: `会话操作 ${homePrompt}` });
+    const [rowBox, actionBox] = await Promise.all([
+      sessionRow.boundingBox(),
+      rowAction.boundingBox()
+    ]);
+    expect(rowBox).not.toBeNull();
+    expect(actionBox).not.toBeNull();
+    expect(actionBox!.x).toBeGreaterThanOrEqual(rowBox!.x);
+    expect(actionBox!.x + actionBox!.width).toBeLessThanOrEqual(
+      rowBox!.x + rowBox!.width + 1
+    );
+    expect(actionBox!.y).toBeGreaterThanOrEqual(rowBox!.y);
+    expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(
+      rowBox!.y + rowBox!.height + 1
+    );
+    await rowAction.click();
     await page.getByRole("menuitem", { name: folderName, exact: true }).click();
     await expect(
       page.getByRole("button", { name: new RegExp(`${folderName} 1`) })
@@ -212,6 +229,19 @@ test("authenticates, runs a durable session, browses files, and schedules work",
     await page.getByRole("button", { name: "收起会话栏" }).click();
     await expect(page.getByRole("button", { name: "展开会话栏" })).toBeVisible();
     await page.getByRole("button", { name: "展开会话栏" }).click();
+
+    const [headerBox, titleBox, controlsBox] = await Promise.all([
+      page.locator(".session-header").boundingBox(),
+      page.getByRole("heading", { name: homePrompt }).boundingBox(),
+      page.locator(".session-controls").boundingBox()
+    ]);
+    expect(headerBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(controlsBox).not.toBeNull();
+    expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(controlsBox!.x);
+    expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(
+      headerBox!.x + headerBox!.width + 1
+    );
   }
 
   const secondPrompt = `slow tool smoke ${suffix}`;
@@ -306,10 +336,14 @@ test("authenticates, runs a durable session, browses files, and schedules work",
     name: "模型与思考级别"
   });
   await expect(runtimeSettings).toBeVisible();
-  await expect(runtimeSettings.getByLabel("模型")).toHaveValue(
+  await expect(runtimeSettings.getByRole("combobox", { name: "模型", exact: true })).toHaveValue(
     "fake/deterministic"
   );
-  await runtimeSettings.getByLabel("思考级别").selectOption("high");
+  const thinkingRange = runtimeSettings.getByLabel("思考级别");
+  await thinkingRange.focus();
+  await expect(thinkingRange).toHaveAttribute("aria-valuetext", "中");
+  await thinkingRange.press("ArrowRight");
+  await expect(thinkingRange).toHaveAttribute("aria-valuetext", "高");
   await runtimeSettings
     .getByRole("button", { name: "应用", exact: true })
     .click();

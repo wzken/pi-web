@@ -309,7 +309,7 @@ export function Dialog({
     if (dialogRef.current === dialog && dialog && !dialog.open) {
       dialog.open = true;
     }
-  });
+  }, undefined, open);
 
   useEffect(() => {
     if (!open) return;

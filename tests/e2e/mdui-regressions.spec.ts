@@ -101,6 +101,90 @@ test.describe("MDUI control regressions", () => {
     expect(schedulePostCount).toBe(0);
   });
 
+  test("model and runtime dialogs survive repeated open, escape, and reopen cycles", async ({
+    page
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop",
+      "Desktop covers the full runtime settings interaction"
+    );
+
+    await page.route("**/api/pi", async (route) => {
+      await route.fulfill({
+        json: {
+          available: true,
+          executable: "pi",
+          version: "test",
+          models: [
+            { provider: "fake", id: "deterministic", label: "raw table row" },
+            { provider: "fake", id: "switched", label: "another raw row" }
+          ],
+          packages: [],
+          errors: []
+        }
+      });
+    });
+
+    await authenticate(page, "/");
+    const runtimeTrigger = page.getByRole("button", {
+      name: "设置工作目录、模型、思考级别和附加提示词"
+    });
+    await runtimeTrigger.click();
+
+    const runtimeDialog = page.locator(
+      'mdui-dialog[aria-labelledby="new-session-runtime-title"]'
+    );
+    await expect(runtimeDialog).toBeVisible();
+    const modelToggle = runtimeDialog.getByRole("button", {
+      name: "打开模型列表"
+    });
+
+    for (let index = 0; index < 3; index += 1) {
+      await modelToggle.click();
+      await expect(page.getByRole("listbox", { name: "可用模型" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("listbox", { name: "可用模型" })).toHaveCount(0);
+      await expect(runtimeDialog).toBeVisible();
+    }
+
+    await modelToggle.click();
+    const modelInput = runtimeDialog.getByRole("combobox", { name: "模型" });
+    await modelInput.fill("switched");
+    await expect(page.getByText("fake", { exact: true })).toBeVisible();
+    await expect(page.getByRole("option", { name: /switched/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /deterministic/ })).toHaveCount(0);
+    await modelInput.press("ArrowDown");
+    await expect(modelInput).toHaveAttribute("aria-activedescendant", /option-0$/);
+    await modelInput.press("Enter");
+    await expect(modelInput).toHaveValue("fake/switched");
+    await expect(page.getByRole("listbox", { name: "可用模型" })).toHaveCount(0);
+
+    await page.keyboard.press("Escape");
+    await expect(runtimeDialog).toHaveCount(0);
+    await expect(runtimeTrigger).toBeFocused();
+    await runtimeTrigger.click();
+    await expect(runtimeDialog).toBeVisible();
+  });
+
+  test("the project action opens the working-directory picker", async ({
+    page
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "desktop",
+      "Desktop validates the persistent rail action"
+    );
+
+    await authenticate(page, "/");
+    await page.getByRole("button", { name: "新建项目" }).click();
+    const directoryDialog = page.locator(
+      'mdui-dialog[aria-labelledby="directory-picker-title"]'
+    );
+    await expect(directoryDialog).toBeVisible();
+    await expect(directoryDialog.getByRole("heading", { name: "选择工作目录" })).toBeVisible();
+    await directoryDialog.getByRole("button", { name: "关闭目录选择" }).click();
+    await expect(directoryDialog).toHaveCount(0);
+  });
+
   test("the schedule dialog has no horizontal overflow at a narrow mobile width", async ({
     page
   }, testInfo) => {

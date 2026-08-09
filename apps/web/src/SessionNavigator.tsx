@@ -39,10 +39,11 @@ import {
   useToast
 } from "./components";
 import { formatRelativeTime, t } from "./i18n";
-import { Link } from "./router";
+import { Link, useNavigate } from "./router";
 import { useUnreadSessions } from "./useUnreadSessions";
 import { ui } from "./ui";
 import { AccountMenu } from "./AccountMenu";
+import { DirectoryPicker } from "./DirectoryPicker";
 
 const railStorageKey = "pi-web:session-rail-open";
 const sidebarSectionStoragePrefix = "pi-web:sidebar-section:";
@@ -260,12 +261,34 @@ function ProjectGroups({
   sessions: SessionRecord[];
   currentCwd?: string;
 }) {
+  const navigate = useNavigate();
+  const toast = useToast();
   const [collapsed, setCollapsed] = useSidebarSectionCollapsed("projects");
+  const [pickerRoots, setPickerRoots] = useState<string[] | null>(null);
+  const [pickerBusy, setPickerBusy] = useState(false);
   const projects = useMemo(
     () => buildSidebarProjects(sessions, currentCwd),
     [currentCwd, sessions]
   );
   const visibleProjects = projects.slice(0, projectPreviewLimit);
+
+  async function openProjectPicker() {
+    if (pickerBusy) return;
+    setPickerBusy(true);
+    try {
+      const settings = await api<{ allowedRoots: string[] }>("/api/settings");
+      if (settings.allowedRoots.length === 0) {
+        toast.push(t("先在设置中配置允许目录"), "error");
+        return;
+      }
+      setPickerRoots(settings.allowedRoots);
+      setCollapsed(false);
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : String(error), "error");
+    } finally {
+      setPickerBusy(false);
+    }
+  }
 
   return (
     <section className={ui(`project-groups${collapsed ? " is-collapsed" : ""}`)}>
@@ -280,6 +303,15 @@ function ProjectGroups({
           {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
           <span>{t("项目")}</span>
         </button>
+        <IconButton
+          className={ui("sidebar-section-action")}
+          label={t("新建项目")}
+          size="sm"
+          disabled={pickerBusy}
+          onClick={() => void openProjectPicker()}
+        >
+          <FolderPlus size={14} aria-hidden="true" />
+        </IconButton>
       </div>
 
       {!collapsed && (
@@ -309,6 +341,19 @@ function ProjectGroups({
             </Link>
           )}
         </>
+      )}
+      {pickerRoots && (
+        <DirectoryPicker
+          roots={pickerRoots}
+          value={currentCwd ?? pickerRoots[0] ?? ""}
+          autoOpen
+          hideTrigger
+          onClose={() => setPickerRoots(null)}
+          onChange={(path) => {
+            setPickerRoots(null);
+            navigate(`/?cwd=${encodeURIComponent(path)}`);
+          }}
+        />
       )}
     </section>
   );
