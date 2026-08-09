@@ -7,6 +7,7 @@ import {
   filterCommandItems,
   type CommandPaletteItem
 } from "./CommandPalette";
+import { t } from "./i18n";
 import { BrowserRouter } from "./router";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -68,6 +69,8 @@ describe("CommandPalette", () => {
     );
 
     expect(markup).toContain('role="combobox"');
-    expect(markup).toContain('aria-label="搜索页面或最近会话…"');
+    expect(markup).toContain(
+      `aria-label="${t("搜索页面或最近会话…")}"`
+    );
   });
 });

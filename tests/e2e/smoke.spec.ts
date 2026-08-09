@@ -5,7 +5,10 @@ test("follows the system appearance before authentication without nested input s
   page
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto("/");
+  const response = await page.goto("/");
+  expect(response?.headers()["content-security-policy"]).not.toContain(
+    "upgrade-insecure-requests"
+  );
   await expect(page.locator("html")).toHaveAttribute("data-color-mode", "dark");
   const darkInput = await page.locator(".login-panel .input-with-icon").evaluate(
     (shell) => ({
