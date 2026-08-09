@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -128,28 +128,54 @@ export function ImageAttachmentTray({
   return (
     <div className={ui("image-attachment-tray")} aria-label={t("待发送图片")}>
       {images.map((image) => (
-        <figure className={ui("image-attachment")} key={image.id}>
-          <img
-            src={`data:${image.mimeType};base64,${image.data}`}
-            alt={image.name}
-          />
-          <figcaption title={image.name}>
-            <span>{image.name}</span>
-            <small>{formatFileSize(image.size)}</small>
-          </figcaption>
-          <IconButton
-            label={t("移除图片 {{name}}", { name: image.name })}
-            size="sm"
-            disabled={disabled}
-            onClick={() =>
-              onChange(images.filter((item) => item.id !== image.id))
-            }
-          >
-            <X size={12} />
-          </IconButton>
-        </figure>
+        <ImageAttachmentPreview
+          key={image.id}
+          image={image}
+          disabled={disabled}
+          onRemove={() =>
+            onChange(images.filter((item) => item.id !== image.id))
+          }
+        />
       ))}
     </div>
+  );
+}
+
+function ImageAttachmentPreview({
+  image,
+  disabled,
+  onRemove
+}: {
+  image: PendingImage;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <figure className={ui("image-attachment")}>
+      <img
+        src={`data:${image.mimeType};base64,${image.data}`}
+        alt={image.name}
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+      />
+      {!loaded && (
+        <span className={ui("image-attachment-loading")} aria-label={t("图片载入中")}>
+          <LoaderCircle size={20} aria-hidden="true" />
+        </span>
+      )}
+      <figcaption className={ui("visually-hidden")}>
+        {image.name} · {formatFileSize(image.size)}
+      </figcaption>
+      <IconButton
+        label={t("移除图片 {{name}}", { name: image.name })}
+        size="sm"
+        disabled={disabled}
+        onClick={onRemove}
+      >
+        <X size={12} />
+      </IconButton>
+    </figure>
   );
 }
 

@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowUpRight,
   Bot,
   Box,
   CheckCircle2,
@@ -7,6 +8,8 @@ import {
   Download,
   Package,
   RefreshCcw,
+  Save,
+  Settings2,
   Terminal,
   Trash2,
   XCircle
@@ -18,7 +21,7 @@ import {
   type FormEvent,
   type KeyboardEvent
 } from "react";
-import type { PiStatus } from "@pi-web/protocol";
+import type { PiStatus, PiUpdateInfo, ThinkingLevel } from "@pi-web/protocol";
 import { api, isAbortError, jsonBody } from "../api";
 import {
   Button,
@@ -29,21 +32,34 @@ import {
   useToast
 } from "../components";
 import { t } from "../i18n";
+import { ModelSelect } from "../ModelSelect";
 import { useSearchParams } from "../router";
+import { ThinkingLevelControl } from "../ThinkingLevelControl";
 import { ui } from "../ui";
 import styles from "./PiManagerPage.module.css";
 
 type ManagerTab = "models" | "packages";
+
+interface ModelDefaults {
+  defaultModel: string | null;
+  defaultThinkingLevel: ThinkingLevel | null;
+}
 
 export function PiManagerPage() {
   const [searchParams] = useSearchParams();
   const requestedTab: ManagerTab =
     searchParams.get("tab") === "packages" ? "packages" : "models";
   const [status, setStatus] = useState<PiStatus | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<PiUpdateInfo | null>(null);
+  const [defaults, setDefaults] = useState<ModelDefaults | null>(null);
+  const [defaultModel, setDefaultModel] = useState("");
+  const [defaultThinking, setDefaultThinking] = useState<ThinkingLevel | "">("");
   const [tab, setTab] = useState<ManagerTab>(requestedTab);
   const [source, setSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [savingDefaults, setSavingDefaults] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const toast = useToast();
 
@@ -62,6 +78,37 @@ export function PiManagerPage() {
     void refresh(controller.signal);
     return () => controller.abort();
   }, [refresh]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api<ModelDefaults>("/api/settings", { signal: controller.signal })
+      .then((value) => {
+        setDefaults(value);
+        setDefaultModel(value.defaultModel ?? "");
+        setDefaultThinking(value.defaultThinkingLevel ?? "");
+      })
+      .catch((reason) => {
+        if (!isAbortError(reason)) setError(reason);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const checkUpdate = useCallback(async (force = false) => {
+    setCheckingUpdate(true);
+    try {
+      setUpdateInfo(
+        await api<PiUpdateInfo>(`/api/pi/update${force ? "?force=1" : ""}`)
+      );
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkUpdate();
+  }, [checkUpdate]);
 
   useEffect(() => {
     setTab(requestedTab);
@@ -92,6 +139,29 @@ export function PiManagerPage() {
       setError(reason);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveModelDefaults() {
+    if (!defaults || savingDefaults) return;
+    setSavingDefaults(true);
+    setError(null);
+    try {
+      const updated = await api<ModelDefaults>("/api/settings", {
+        method: "PUT",
+        ...jsonBody({
+          defaultModel: defaultModel.trim() || null,
+          defaultThinkingLevel: defaultThinking || null
+        })
+      });
+      setDefaults(updated);
+      setDefaultModel(updated.defaultModel ?? "");
+      setDefaultThinking(updated.defaultThinkingLevel ?? "");
+      toast.push(t("默认模型配置已保存"));
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setSavingDefaults(false);
     }
   }
 
@@ -204,6 +274,58 @@ export function PiManagerPage() {
         </dl>
       </section>
 
+      {updateInfo && (
+        <aside
+          className={styles.updateNotice}
+          data-update-available={String(updateInfo.updateAvailable)}
+          aria-live="polite"
+        >
+          <div>
+            <span className={styles.updateIcon}>
+              <RefreshCcw size={17} aria-hidden="true" />
+            </span>
+            <div>
+              <strong>
+                {updateInfo.updateAvailable
+                  ? t("发现 Pi {{version}}", { version: updateInfo.latestVersion ?? "" })
+                  : updateInfo.error
+                    ? t("暂时无法检查 Pi 更新")
+                    : t("Pi 已是最新版本")}
+              </strong>
+              <span>
+                {updateInfo.updateAvailable
+                  ? t("当前 {{current}}；请在服务器运行 pi update。", {
+                      current: updateInfo.currentVersion ?? t("未知版本")
+                    })
+                  : updateInfo.error ||
+                    t("已自动检查，后续打开 Pi 管理时会再次检查。")}
+              </span>
+            </div>
+          </div>
+          <div className={styles.updateActions}>
+            {updateInfo.updateAvailable && (
+              <a
+                href={updateInfo.changelogUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("查看更新说明")}
+                <ArrowUpRight size={14} aria-hidden="true" />
+              </a>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={checkingUpdate}
+              loadingLabel={t("检查中…")}
+              onClick={() => void checkUpdate(true)}
+            >
+              {t("重新检查")}
+            </Button>
+          </div>
+        </aside>
+      )}
+
       {status.errors.length > 0 && (
         <div className={styles.managerErrors} role="status">
           <AlertTriangle size={18} aria-hidden="true" />
@@ -257,6 +379,55 @@ export function PiManagerPage() {
           aria-labelledby="pi-models-tab"
           tabIndex={0}
         >
+          <article className={ui(styles.panel, styles.modelDefaultsPanel)}>
+            <header className={styles.panelHeading}>
+              <div>
+                <span className={styles.panelIcon}>
+                  <Settings2 size={18} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className={styles.eyebrow}>NEW SESSION DEFAULTS</p>
+                  <h2>{t("默认模型配置")}</h2>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                loading={savingDefaults}
+                loadingLabel={t("保存中…")}
+                disabled={
+                  !defaults ||
+                  (defaultModel.trim() === (defaults.defaultModel ?? "") &&
+                    defaultThinking === (defaults.defaultThinkingLevel ?? ""))
+                }
+                onClick={() => void saveModelDefaults()}
+              >
+                <Save size={14} aria-hidden="true" />
+                {t("保存默认值")}
+              </Button>
+            </header>
+            <div className={styles.modelDefaultsBody}>
+              <label className={styles.field}>
+                <span>{t("新会话默认模型")}</span>
+                <ModelSelect
+                  value={defaultModel}
+                  disabled={savingDefaults}
+                  onChange={setDefaultModel}
+                  onError={setError}
+                />
+                <small>{t("只影响之后创建的会话，当前会话可在输入框旁单独调整。")}</small>
+              </label>
+              <div className={styles.field}>
+                <span>{t("默认思考级别")}</span>
+                <ThinkingLevelControl
+                  value={defaultThinking}
+                  allowDefault
+                  disabled={savingDefaults}
+                  onChange={setDefaultThinking}
+                />
+              </div>
+            </div>
+          </article>
+
           <article className={styles.panel}>
             <header className={styles.panelHeading}>
               <div>
@@ -329,12 +500,22 @@ export function PiManagerPage() {
                   >
                     <span className={styles.modelDot} aria-hidden="true" />
                     <div>
-                      <strong>{model.label || model.id}</strong>
-                      {model.label !== model.id && <code>{model.id}</code>}
+                      <strong>{model.id}</strong>
+                      <code>{model.provider}/{model.id}</code>
                     </div>
                     <span className={styles.providerChip}>
                       {model.provider}
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      active={defaultModel === `${model.provider}/${model.id}`}
+                      onClick={() => setDefaultModel(`${model.provider}/${model.id}`)}
+                    >
+                      {defaultModel === `${model.provider}/${model.id}`
+                        ? t("已选")
+                        : t("设为默认")}
+                    </Button>
                   </div>
                 ))}
               </div>

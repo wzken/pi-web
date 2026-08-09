@@ -255,6 +255,8 @@ export class IpcServer {
           createdBy: "web"
         });
       }
+      case "sessions.fork":
+        return await this.#supervisor.fork(stringParam(params, "id"));
       case "sessions.resume": {
         const input = resumeSessionSchema.parse(params);
         return await this.#supervisor.resume(
@@ -361,6 +363,8 @@ export class IpcServer {
         return await this.#schedulerTool(params);
       case "pi.status":
         return await this.#piManager.status();
+      case "pi.update_status":
+        return await this.#piManager.updateStatus(Boolean(params.force));
       case "pi.package":
         return await this.#piManager.packageOperation({
           action: stringParam(params, "action") as

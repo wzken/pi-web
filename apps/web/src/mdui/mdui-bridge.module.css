@@ -154,11 +154,16 @@
 .dialog::part(panel) {
   box-sizing: border-box;
   width: min(calc(100vw - 2rem), var(--app-dialog-max-width, 35rem));
+  min-width: 0;
   max-width: min(calc(100vw - 2rem), var(--app-dialog-max-width, 35rem));
+  max-height: calc(100dvh - 2rem);
 }
 
 .dialog::part(body) {
+  min-height: 0;
   overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /*
@@ -255,10 +260,14 @@
 
   .dialog::part(panel) {
     width: 100%;
+    min-width: 0;
     max-width: 100%;
-    max-height: 92vh;
-    max-height: 92dvh;
+    max-height: calc(100dvh - env(safe-area-inset-top));
     border-radius: var(--mdui-shape-corner-extra-large)
       var(--mdui-shape-corner-extra-large) 0 0;
+  }
+
+  .dialog::part(body) {
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
   }
 }

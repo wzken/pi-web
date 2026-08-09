@@ -72,7 +72,6 @@ export function ModelSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
-  const suppressNextFocusOpen = useRef(false);
   const listboxId = useId();
 
   useEffect(() => {
@@ -183,7 +182,6 @@ export function ModelSelect({
       setOpen(false);
       setQuery("");
       setActiveOptionIndex(null);
-      suppressNextFocusOpen.current = true;
       window.requestAnimationFrame(() => inputRef.current?.focus());
     };
     const reposition = () => updatePopupPosition();
@@ -204,7 +202,6 @@ export function ModelSelect({
     setQuery("");
     setOpen(false);
     setActiveOptionIndex(null);
-    suppressNextFocusOpen.current = true;
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
@@ -312,13 +309,6 @@ export function ModelSelect({
             : undefined
         }
         placeholder={t("搜索或输入模型")}
-        onFocus={() => {
-          if (suppressNextFocusOpen.current) {
-            suppressNextFocusOpen.current = false;
-            return;
-          }
-          openList();
-        }}
         onClick={openList}
         onChange={(event) => {
           onChange(event.target.value);

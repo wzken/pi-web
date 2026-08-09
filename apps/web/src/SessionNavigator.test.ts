@@ -1,30 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { SessionRecord } from "@pi-web/protocol";
 import {
+  buildStandaloneSessions,
   buildSidebarProjects,
   compareSidebarSessions
 } from "./SessionNavigator";
 
 describe("buildSidebarProjects", () => {
-  it("uses normalized working folders as projects and counts their chats", () => {
-    const projects = buildSidebarProjects([
+  it("uses favorite working folders as projects and nests their chats", () => {
+    const sessions = [
       session("one", "C:\\Work\\pi-web", "2026-08-03T03:00:00.000Z"),
       session("two", "c:/work/pi-web/", "2026-08-03T04:00:00.000Z"),
-      session("three", "C:\\Work\\docs", "2026-08-03T02:00:00.000Z")
-    ]);
+      session("standalone", "C:\\Work\\notes", "2026-08-03T02:00:00.000Z")
+    ];
+    const projects = buildSidebarProjects(sessions, [directory("C:\\Work\\pi-web")]);
 
     expect(projects).toEqual([
       expect.objectContaining({
         cwd: "C:\\Work\\pi-web",
         name: "pi-web",
         sessionCount: 2,
-        updatedAt: "2026-08-03T04:00:00.000Z"
-      }),
-      expect.objectContaining({
-        cwd: "C:\\Work\\docs",
-        name: "docs",
-        sessionCount: 1
+        updatedAt: "2026-08-03T04:00:00.000Z",
+        sessions: [sessions[0], sessions[1]]
       })
+    ]);
+    expect(buildStandaloneSessions(sessions, projects).map(({ id }) => id)).toEqual([
+      "standalone"
     ]);
   });
 
@@ -34,6 +35,7 @@ describe("buildSidebarProjects", () => {
         session("one", "/teams/alpha/app", "2026-08-03T05:00:00.000Z"),
         session("two", "/teams/beta/app", "2026-08-03T06:00:00.000Z")
       ],
+      [directory("/teams/alpha/app"), directory("/teams/beta/app")],
       "/teams/alpha/app"
     );
 
@@ -44,12 +46,13 @@ describe("buildSidebarProjects", () => {
   });
 
   it("includes the selected folder before its first chat exists", () => {
-    expect(buildSidebarProjects([], "D:\\new-project")).toEqual([
+    expect(buildSidebarProjects([], [directory("D:\\new-project")], "D:\\new-project")).toEqual([
       {
         cwd: "D:\\new-project",
         name: "new-project",
         sessionCount: 0,
-        updatedAt: ""
+        updatedAt: "2026-08-03T00:00:00.000Z",
+        sessions: []
       }
     ]);
   });
@@ -120,5 +123,14 @@ function session(id: string, cwd: string, updatedAt: string): SessionRecord {
     estimatedCost: null,
     costStatus: "unknown",
     toolCalls: 0
+  };
+}
+
+function directory(path: string) {
+  return {
+    path,
+    alias: null,
+    favorite: true,
+    lastUsedAt: "2026-08-03T00:00:00.000Z"
   };
 }

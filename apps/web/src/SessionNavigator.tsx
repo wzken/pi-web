@@ -48,13 +48,22 @@ import { DirectoryPicker } from "./DirectoryPicker";
 const railStorageKey = "pi-web:session-rail-open";
 const sidebarSectionStoragePrefix = "pi-web:sidebar-section:";
 const projectPreviewLimit = 3;
+const projectSessionPreviewLimit = 5;
 const chatPreviewLimit = 5;
+
+export interface SidebarDirectory {
+  path: string;
+  alias: string | null;
+  favorite: boolean;
+  lastUsedAt: string;
+}
 
 export interface SidebarProject {
   cwd: string;
   name: string;
   sessionCount: number;
   updatedAt: string;
+  sessions: SessionRecord[];
 }
 
 export function useWorkbenchRail(): [
@@ -160,6 +169,26 @@ export function SessionNavigator({
   onSessionDeleted?: (sessionId: string) => void;
 }) {
   const workspaceHome = cwd ? `/?cwd=${encodeURIComponent(cwd)}` : "/";
+  const [projectDirectories, setProjectDirectories] = useState<SidebarDirectory[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api<SidebarDirectory[]>("/api/directories", { signal: controller.signal })
+      .then((items) => setProjectDirectories(items.filter((item) => item.favorite)))
+      .catch((reason) => {
+        if (!isAbortError(reason)) setProjectDirectories([]);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const projects = useMemo(
+    () => buildSidebarProjects(sessions, projectDirectories, cwd),
+    [cwd, projectDirectories, sessions]
+  );
+  const standaloneSessions = useMemo(
+    () => buildStandaloneSessions(sessions, projects),
+    [projects, sessions]
+  );
 
   return (
     <aside className={ui("workbench-session-rail")}>
@@ -227,10 +256,21 @@ export function SessionNavigator({
         </Link>
       </nav>
 
-      <ProjectGroups sessions={sessions} {...(cwd ? { currentCwd: cwd } : {})} />
+      <ProjectGroups
+        projects={projects}
+        currentId={currentId}
+        {...(cwd ? { currentCwd: cwd } : {})}
+        onProjectAdded={(path) => {
+          setProjectDirectories((items) =>
+            items.some((item) => sameWorkspace(item.path, path))
+              ? items
+              : [...items, { path, alias: null, favorite: true, lastUsedAt: new Date().toISOString() }]
+          );
+        }}
+      />
 
       <SessionGroups
-        sessions={sessions}
+        sessions={standaloneSessions}
         currentId={currentId}
         onSessionRenamed={onSessionRenamed}
         onSessionPinned={onSessionPinned}
@@ -255,21 +295,23 @@ export function SessionNavigator({
 }
 
 function ProjectGroups({
-  sessions,
-  currentCwd
+  projects,
+  currentId,
+  currentCwd,
+  onProjectAdded
 }: {
-  sessions: SessionRecord[];
+  projects: SidebarProject[];
+  currentId?: string | undefined;
   currentCwd?: string;
+  onProjectAdded: (path: string) => void;
 }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [collapsed, setCollapsed] = useSidebarSectionCollapsed("projects");
   const [pickerRoots, setPickerRoots] = useState<string[] | null>(null);
   const [pickerBusy, setPickerBusy] = useState(false);
-  const projects = useMemo(
-    () => buildSidebarProjects(sessions, currentCwd),
-    [currentCwd, sessions]
-  );
+  const unreadSessions = useUnreadSessions();
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const visibleProjects = projects.slice(0, projectPreviewLimit);
 
   async function openProjectPicker() {
@@ -317,20 +359,68 @@ function ProjectGroups({
       {!collapsed && (
         <>
           <div className={ui("project-list")}>
-            {visibleProjects.map((project) => (
-              <Link
-                className={ui(
-                  `project-row${sameWorkspace(project.cwd, currentCwd ?? "") ? " is-active" : ""}`
-                )}
-                key={workspaceKey(project.cwd)}
-                to={`/?cwd=${encodeURIComponent(project.cwd)}`}
-                title={project.cwd}
-              >
-                <Folder size={13} aria-hidden="true" />
-                <span>{project.name}</span>
-                <small>{project.sessionCount}</small>
-              </Link>
-            ))}
+            {visibleProjects.map((project) => {
+              const key = workspaceKey(project.cwd);
+              const projectCollapsed = collapsedProjects.has(key);
+              const sortedSessions = [...project.sessions].sort(compareSidebarSessions);
+              const preview = sortedSessions.slice(0, projectSessionPreviewLimit);
+              const active = currentId
+                ? sortedSessions.find((session) => session.id === currentId)
+                : undefined;
+              const visibleSessions = active && !preview.some((session) => session.id === active.id)
+                ? [...preview.slice(0, projectSessionPreviewLimit - 1), active]
+                : preview;
+              return (
+                <div className={ui("project-tree")} key={key}>
+                  <div
+                    className={ui(
+                      `project-row${sameWorkspace(project.cwd, currentCwd ?? "") ? " is-active" : ""}`
+                    )}
+                    title={project.cwd}
+                  >
+                    <button
+                      type="button"
+                      className={ui("project-row-toggle")}
+                      aria-expanded={!projectCollapsed}
+                      onClick={() => setCollapsedProjects((items) => {
+                        const next = new Set(items);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      })}
+                    >
+                      {projectCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                      <Folder size={13} aria-hidden="true" />
+                      <span>{project.name}</span>
+                      <small>{project.sessionCount}</small>
+                    </button>
+                    <Link
+                      className={ui("project-new-session")}
+                      to={`/?cwd=${encodeURIComponent(project.cwd)}`}
+                      aria-label={`${t("新建会话")} · ${project.name}`}
+                      title={t("新建会话")}
+                    >
+                      <MessageSquarePlus size={13} />
+                    </Link>
+                  </div>
+                  {!projectCollapsed && (
+                    <div className={ui("project-session-list")}>
+                      {visibleSessions.map((session) => (
+                        <Link
+                          className={ui(`project-session-link${session.id === currentId ? " is-active" : ""}`)}
+                          key={session.id}
+                          to={`/sessions/${encodeURIComponent(session.id)}`}
+                          title={session.displayName}
+                        >
+                          <span>{session.displayName}</span>
+                          {unreadSessions.has(session.id) && <i aria-label={t("未读")} />}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {projects.length === 0 && (
               <p className={ui("project-list-empty")}>{t("还没有项目")}</p>
             )}
@@ -351,6 +441,7 @@ function ProjectGroups({
           onClose={() => setPickerRoots(null)}
           onChange={(path) => {
             setPickerRoots(null);
+            onProjectAdded(path);
             navigate(`/?cwd=${encodeURIComponent(path)}`);
           }}
         />
@@ -1207,29 +1298,27 @@ function SessionRow({
 
 export function buildSidebarProjects(
   sessions: SessionRecord[],
+  directories: SidebarDirectory[],
   currentCwd?: string
 ): SidebarProject[] {
   const projects = new Map<string, SidebarProject>();
-  for (const session of sessions) {
-    const key = workspaceKey(session.cwd);
-    const current = projects.get(key);
+  for (const directory of directories.filter((item) => item.favorite)) {
+    const key = workspaceKey(directory.path);
     projects.set(key, {
-      cwd: current?.cwd ?? session.cwd,
-      name: projectName(current?.cwd ?? session.cwd),
-      sessionCount: (current?.sessionCount ?? 0) + 1,
-      updatedAt:
-        !current || session.updatedAt > current.updatedAt
-          ? session.updatedAt
-          : current.updatedAt
+      cwd: directory.path,
+      name: directory.alias?.trim() || projectName(directory.path),
+      sessionCount: 0,
+      updatedAt: directory.lastUsedAt,
+      sessions: []
     });
   }
-  if (currentCwd && !projects.has(workspaceKey(currentCwd))) {
-    projects.set(workspaceKey(currentCwd), {
-      cwd: currentCwd,
-      name: projectName(currentCwd),
-      sessionCount: 0,
-      updatedAt: ""
-    });
+  for (const session of sessions) {
+    const key = workspaceKey(session.cwd);
+    const project = projects.get(key);
+    if (!project) continue;
+    project.sessions.push(session);
+    project.sessionCount += 1;
+    if (session.updatedAt > project.updatedAt) project.updatedAt = session.updatedAt;
   }
   return [...projects.values()].sort((left, right) => {
     const leftCurrent = currentCwd
@@ -1241,6 +1330,14 @@ export function buildSidebarProjects(
     if (leftCurrent !== rightCurrent) return leftCurrent ? -1 : 1;
     return right.updatedAt.localeCompare(left.updatedAt);
   });
+}
+
+export function buildStandaloneSessions(
+  sessions: SessionRecord[],
+  projects: SidebarProject[]
+): SessionRecord[] {
+  const projectKeys = new Set(projects.map((project) => workspaceKey(project.cwd)));
+  return sessions.filter((session) => !projectKeys.has(workspaceKey(session.cwd)));
 }
 
 export function compareSidebarSessions(

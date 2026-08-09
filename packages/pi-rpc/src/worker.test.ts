@@ -59,6 +59,22 @@ describe("PiRpcWorker.close", () => {
   });
 });
 
+describe("PiRpcWorker session source", () => {
+  it("rejects a worker configured to resume and fork at the same time", async () => {
+    const worker = new PiRpcWorker({
+      executable: process.execPath,
+      cwd: process.cwd(),
+      name: "invalid-source",
+      sessionPath: "existing.jsonl",
+      forkSessionPath: "source.jsonl"
+    });
+
+    await expect(worker.start()).rejects.toThrow(
+      "cannot resume and fork a session at the same time"
+    );
+  });
+});
+
 describe("PiRpcWorker environment", () => {
   it("does not inherit the web access key or stale scheduler authority", () => {
     const environment = workerEnvironment(

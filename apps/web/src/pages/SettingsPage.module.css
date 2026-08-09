@@ -819,7 +819,7 @@
   margin-top: 0;
 }
 
-.field input,
+.field input:not([type="range"]),
 .field textarea,
 .field select {
   width: 100%;
@@ -843,13 +843,13 @@
   resize: vertical;
 }
 
-.field input:hover,
+.field input:not([type="range"]):hover,
 .field textarea:hover,
 .field select:hover {
   border-color: color-mix(in srgb, var(--text-dim) 55%, var(--line));
 }
 
-.field input:focus,
+.field input:not([type="range"]):focus,
 .field textarea:focus,
 .field select:focus {
   border-color: var(--lime);
@@ -1145,9 +1145,15 @@
 
 .dialogActions {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 9px;
   margin-top: 16px;
+}
+
+.dialogActions > * {
+  min-width: 0;
 }
 
 @media (max-width: 760px) {

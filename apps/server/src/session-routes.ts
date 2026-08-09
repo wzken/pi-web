@@ -70,6 +70,17 @@ export function registerSessionRoutes(
       });
     }
   );
+  app.post<{ Params: { id: string } }>(
+    "/api/sessions/:id/fork",
+    async (request, reply) => {
+      const session = await client.request<{ id: string }>(
+        "sessions.fork",
+        { id: idSchema.parse(request.params.id) },
+        120_000
+      );
+      return reply.code(201).send(session);
+    }
+  );
   app.post<{ Params: { id: string }; Body: unknown }>(
     "/api/sessions/:id/messages",
     async (request, reply) => {

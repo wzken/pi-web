@@ -21,6 +21,7 @@ import {
   type Ref,
   type ReactNode
 } from "react";
+import { createPortal } from "react-dom";
 import type { Dialog as MduiDialogElement } from "mdui/components/dialog.js";
 import type { Dropdown as MduiDropdownElement } from "mdui/components/dropdown.js";
 import type { MenuItem as MduiMenuItemElement } from "mdui/components/menu-item.js";
@@ -165,7 +166,7 @@ export function Button({
   leftIcon?: ReactNode;
   rightIcon?: ReactNode;
   active?: boolean | undefined;
-  tooltip?: string;
+  tooltip?: string | null;
 }) {
   const hasExplicitLabel = ariaLabel !== undefined;
   const control = (
@@ -248,7 +249,7 @@ export function ButtonLink({
   size?: ButtonSize;
   fullWidth?: boolean;
   active?: boolean | undefined;
-  tooltip?: string;
+  tooltip?: string | null;
   leftIcon?: ReactNode;
   rightIcon?: ReactNode;
 }) {
@@ -328,7 +329,7 @@ export function Dialog({
   }, [open]);
 
   if (!open) return null;
-  return (
+  const dialog = (
     <mdui-dialog
       ref={dialogRef}
       className={mduiStyles.dialog}
@@ -355,6 +356,9 @@ export function Dialog({
       </div>
     </mdui-dialog>
   );
+  return typeof document === "undefined"
+    ? dialog
+    : createPortal(dialog, document.body);
 }
 
 export function IconButton({
@@ -371,7 +375,7 @@ export function IconButton({
   ...props
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> & {
   label: string;
-  tooltip?: string;
+  tooltip?: string | null;
   variant?: Extract<ButtonVariant, "secondary" | "outline" | "ghost" | "toolbar" | "danger">;
   size?: Extract<ButtonSize, "sm" | "md" | "icon">;
   active?: boolean | undefined;
@@ -412,7 +416,9 @@ export function IconButton({
       <span className={mduiStyles.visuallyHidden}>{label}</span>
     </MduiButtonIconHost>
   );
-  return <Tooltip content={tooltip} slot={slot}>{control}</Tooltip>;
+  return tooltip === null ? control : (
+    <Tooltip content={tooltip} slot={slot}>{control}</Tooltip>
+  );
 }
 
 export function LoadingSpinner({ size = 18 }: { size?: number }) {

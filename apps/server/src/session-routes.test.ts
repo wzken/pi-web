@@ -133,6 +133,24 @@ describe("session HTTP routes", () => {
     expect(request).toHaveBeenNthCalledWith(2, "sessions.delete", { id });
   });
 
+  it("creates a session branch through the long-running Sessiond request", async () => {
+    const id = "ad30361b-6d63-48ce-8347-879913471852";
+    request.mockResolvedValue({ id: "forked-session" });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${id}/fork`
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toEqual({ id: "forked-session" });
+    expect(request).toHaveBeenCalledWith(
+      "sessions.fork",
+      { id },
+      120_000
+    );
+  });
+
   it("keeps folder metadata behind the Sessiond boundary", async () => {
     request.mockResolvedValue({ folders: [], assignments: {} });
     const sessionId = "ad30361b-6d63-48ce-8347-879913471852";

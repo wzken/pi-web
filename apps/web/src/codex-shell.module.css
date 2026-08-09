@@ -252,6 +252,7 @@
 .thinking-level-track {
   position: relative;
   height: 18px;
+  touch-action: none;
 }
 
 .thinking-level-track::after,
@@ -278,15 +279,23 @@
 .thinking-level-track > input {
   position: absolute;
   z-index: 3;
-  inset: 0;
+  top: 50%;
+  right: 0;
+  bottom: auto;
+  left: 0;
   width: 100%;
-  height: 18px;
+  height: 44px;
+  min-height: 0;
   margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
   appearance: none;
   border: 0;
+  border-radius: 0;
   outline: none;
   background: transparent;
   cursor: pointer;
+  touch-action: none;
 }
 
 .thinking-level-track > input::-webkit-slider-runnable-track {
@@ -355,6 +364,66 @@
 
 .thinking-level-labels > span:last-child {
   text-align: right;
+}
+
+/* Runtime settings use calm, grouped surfaces instead of a long form sheet. */
+.runtime-config-dialog {
+  gap: 0;
+}
+
+.runtime-config-heading {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.runtime-config-heading h2 {
+  font-size: 18px;
+}
+
+.runtime-config-grid {
+  gap: 10px;
+}
+
+.session-runtime-dialog .runtime-config-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.runtime-config-grid .field {
+  margin: 0;
+  padding: 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-2) 74%, var(--panel));
+}
+
+.runtime-config-grid .field > span {
+  margin-bottom: 9px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.runtime-config-grid .field :is(input:not([type="range"]), textarea) {
+  background: var(--bg);
+}
+
+.runtime-config-actions {
+  margin-top: 16px;
+}
+
+.new-session-runtime-dialog .runtime-prompt-field textarea {
+  min-height: 82px;
+}
+
+@media (max-width: 760px) {
+  .runtime-config-heading {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+
+  .runtime-config-grid .field {
+    padding: 11px;
+  }
 }
 
 :root[data-color-mode="light"] .sidebar-section-action {
@@ -721,6 +790,9 @@
 
 .project-groups {
   display: grid;
+  min-height: 0;
+  max-height: min(44dvh, 460px);
+  grid-template-rows: 36px minmax(0, 1fr) auto;
   align-self: start;
   gap: 2px;
   padding: 0 10px 7px;
@@ -763,16 +835,17 @@
 
 .project-list {
   display: grid;
+  min-height: 0;
+  overflow-y: auto;
   gap: 1px;
 }
 
 .project-row {
   display: grid;
   min-height: 38px;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px;
+  padding-left: 2px;
   border-radius: 7px;
   color: #d4d4d4;
   font-size: 13.5px;
@@ -788,15 +861,77 @@
   color: #8a8a8a;
 }
 
-.project-row > span {
+.project-row-toggle {
+  display: grid;
+  min-width: 0;
+  min-height: 38px;
+  grid-template-columns: 12px 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 5px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-row-toggle > span,
+.project-session-link > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-row > small {
+.project-row-toggle > small {
   color: #666;
   font-size: 9px;
+}
+
+.project-new-session {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 7px;
+  color: #888;
+}
+
+.project-new-session:hover {
+  color: #fff;
+  background: #292929;
+}
+
+.project-session-list {
+  display: grid;
+  gap: 1px;
+  padding: 0 0 4px 25px;
+}
+
+.project-session-link {
+  display: grid;
+  min-height: 34px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: #bdbdbd;
+  font-size: 12.5px;
+}
+
+.project-session-link:hover,
+.project-session-link.is-active {
+  color: #fff;
+  background: #202020;
+}
+
+.project-session-link > i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8e7aff;
 }
 
 .project-list-empty {
@@ -1317,8 +1452,7 @@
 
   .project-row {
     min-height: 43px;
-    grid-template-columns: 22px minmax(0, 1fr) auto;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 42px;
     padding-inline: 7px 10px;
     border-radius: 11px;
     font-size: 15px;
@@ -1329,8 +1463,28 @@
     height: 20px;
   }
 
-  .project-row > small {
+  .project-row-toggle {
+    min-height: 43px;
+    grid-template-columns: 16px 22px minmax(0, 1fr) auto;
+    gap: 9px;
+  }
+
+  .project-row-toggle > small {
     font-size: 11px;
+  }
+
+  .project-new-session {
+    width: 40px;
+    height: 40px;
+  }
+
+  .project-session-list {
+    padding-left: 38px;
+  }
+
+  .project-session-link {
+    min-height: 42px;
+    font-size: 15px;
   }
 
   .session-groups {
@@ -1763,5 +1917,157 @@
 
   :root[data-color-mode="light"] .mobile-session-context-menu > button.is-danger {
     color: #d83a3a;
+  }
+}
+
+/* Final composer rules: one adaptive surface on desktop and mobile. */
+.home-composer {
+  position: relative;
+  display: grid;
+  min-height: 78px;
+  max-height: min(72dvh, 680px);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  overflow: hidden;
+  padding: 8px 8px 6px 10px;
+}
+
+.home-composer > .image-attachment-tray,
+.home-composer > .file-attachment-tray {
+  order: 1;
+  width: 100%;
+  padding: 2px 44px 2px 2px;
+}
+
+.home-composer > textarea {
+  order: 2;
+  width: 100%;
+  height: auto;
+  min-height: 26px;
+  max-height: 160px;
+  padding: 5px 8px;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  resize: none;
+}
+
+.home-composer > .home-composer-bar {
+  position: static;
+  order: 3;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  min-height: 42px;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.home-composer.composer-expanded {
+  min-height: min(56dvh, 520px);
+}
+
+.home-composer.composer-expanded > textarea {
+  min-height: min(40dvh, 390px);
+  max-height: none;
+}
+
+.home-composer .composer-expand-toggle {
+  top: 10px;
+  right: 10px;
+}
+
+.home-composer-tools {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.home-composer-tools .codex-runtime-trigger {
+  min-width: 0;
+  max-width: min(270px, 48vw);
+}
+
+.home-composer-tools .codex-runtime-trigger .button-content,
+.home-composer-tools .codex-runtime-trigger .button-content > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-composer-bar > .tooltip:last-child {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .home-composer {
+    min-height: 72px;
+    max-height: min(72dvh, 620px);
+    border-radius: 26px;
+    padding: 8px 7px 6px 9px;
+  }
+
+  .home-composer > textarea {
+    height: auto;
+    min-height: 30px;
+    max-height: 118px;
+    padding: 5px 7px;
+    font-size: 16px;
+  }
+
+  .home-composer > .home-composer-bar {
+    min-height: 48px;
+    padding: 0;
+  }
+
+  .home-composer.composer-expanded {
+    min-height: min(62dvh, 520px);
+  }
+
+  .home-composer.composer-expanded > textarea {
+    min-height: min(43dvh, 390px);
+  }
+}
+
+/* Keep dialog headings/actions fixed while dense fields scroll within the sheet. */
+.runtime-config-dialog {
+  display: flex;
+  min-height: 0;
+  max-height: calc(100dvh - 80px);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.runtime-config-dialog > .runtime-config-grid {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+}
+
+.runtime-config-dialog > .runtime-config-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  padding-bottom: max(1px, env(safe-area-inset-bottom));
+}
+
+@media (max-width: 600px) {
+  .runtime-config-dialog {
+    max-height: calc(100dvh - 32px - env(safe-area-inset-top));
+  }
+
+  .runtime-config-dialog > .runtime-config-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .runtime-config-dialog > .runtime-config-actions .button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .runtime-config-dialog > .runtime-config-actions {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

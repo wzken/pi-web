@@ -1,7 +1,9 @@
 import {
   ChevronDown,
   FolderOpen,
+  Maximize2,
   Menu,
+  Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -9,7 +11,14 @@ import {
   SlidersHorizontal,
   X
 } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent
+} from "react";
 import type { SessionRecord, ThinkingLevel } from "@pi-web/protocol";
 import { api, isAbortError, jsonBody } from "../api";
 import {
@@ -31,6 +40,7 @@ import {
   AttachmentPicker,
   FileAttachmentTray,
   useAttachmentSelectionQueue,
+  useAttachmentDropZone,
   uploadAttachments,
   type PendingFileAttachment
 } from "../FileAttachments";
@@ -76,6 +86,9 @@ export function HomePage() {
   const [runtimeOpen, setRuntimeOpen] = useState(false);
   const [files, setFiles] = useState<PendingFileAttachment[]>([]);
   const [busy, setBusy] = useState(false);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [composerExpanded, setComposerExpanded] = useState(false);
+  const [canExpandComposer, setCanExpandComposer] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [mobileViewport] = useState(() =>
     typeof window !== "undefined"
@@ -87,7 +100,7 @@ export function HomePage() {
     setImages,
     clear: clearImages
   } = useImageAttachmentDraft(homeDraftScope(cwd));
-  const addAttachments = useAttachmentSelectionQueue({
+  const queueAttachments = useAttachmentSelectionQueue({
     scope: homeDraftScope(cwd),
     images,
     files,
@@ -96,6 +109,37 @@ export function HomePage() {
     onError: setError
   });
   const createMutation = useRef(new PendingMutationTracker());
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const addAttachments = useCallback(async (selected: File[]) => {
+    setAttachmentBusy(true);
+    try {
+      await queueAttachments(selected);
+    } finally {
+      setAttachmentBusy(false);
+    }
+  }, [queueAttachments]);
+  const { dragActive, dropZoneProps } = useAttachmentDropZone({
+    disabled: busy || !cwd,
+    onAdd: addAttachments
+  });
+
+  useLayoutEffect(() => {
+    const textarea = promptRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const contentHeight = textarea.scrollHeight;
+    setCanExpandComposer(
+      contentHeight > 116 || images.length > 0 || files.length > 0
+    );
+    if (composerExpanded) {
+      textarea.style.height = "100%";
+      textarea.style.overflowY = "auto";
+      return;
+    }
+    const maximum = mobileViewport ? 118 : 160;
+    textarea.style.height = `${Math.min(Math.max(contentHeight, 26), maximum)}px`;
+    textarea.style.overflowY = contentHeight > maximum ? "auto" : "hidden";
+  }, [composerExpanded, files.length, images.length, mobileViewport, prompt]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,7 +175,12 @@ export function HomePage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const message = prompt.trim();
-    if ((!message && images.length === 0 && files.length === 0) || !cwd || busy) {
+    if (
+      (!message && images.length === 0 && files.length === 0) ||
+      !cwd ||
+      busy ||
+      attachmentBusy
+    ) {
       return;
     }
     setBusy(true);
@@ -280,7 +329,7 @@ export function HomePage() {
               <AttachmentPicker
                 className={ui("mobile-home-action")}
                 visibleLabel
-                disabled={busy}
+                disabled={busy || attachmentBusy}
                 onAdd={addAttachments}
               />
               <Button
@@ -303,8 +352,21 @@ export function HomePage() {
               </Button>
             </div>
 
-            <form className={ui("home-composer")} onSubmit={submit}>
+            <form
+              className={ui(
+                `home-composer${composerExpanded ? " composer-expanded" : ""}${dragActive ? " attachment-drag-active" : ""}`
+              )}
+              aria-busy={busy || attachmentBusy}
+              onSubmit={submit}
+              {...dropZoneProps}
+            >
+              {dragActive && (
+                <div className={ui("attachment-drop-overlay")} role="status">
+                  {t("拖放图片或文件到这里")}
+                </div>
+              )}
               <textarea
+                ref={promptRef}
                 value={prompt}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -352,10 +414,25 @@ export function HomePage() {
                 disabled={busy}
                 onChange={setFiles}
               />
+              {canExpandComposer && (
+                <IconButton
+                  className={ui("composer-expand-toggle")}
+                  label={composerExpanded ? t("收起输入框") : t("展开输入框")}
+                  variant="toolbar"
+                  size="sm"
+                  onClick={() => setComposerExpanded((value) => !value)}
+                >
+                  {composerExpanded ? (
+                    <Minimize2 size={16} />
+                  ) : (
+                    <Maximize2 size={16} />
+                  )}
+                </IconButton>
+              )}
               <div className={ui("home-composer-bar")}>
                 <div className={ui("home-composer-tools")}>
                   <AttachmentPicker
-                    disabled={busy}
+                    disabled={busy || attachmentBusy}
                     onAdd={addAttachments}
                   />
                   <Button
@@ -388,7 +465,8 @@ export function HomePage() {
                   loadingLabel={t("创建中…")}
                   disabled={
                     (!prompt.trim() && images.length === 0 && files.length === 0) ||
-                    !cwd
+                    !cwd ||
+                    attachmentBusy
                   }
                   aria-label={t("创建会话并发送")}
                   tooltip={t("创建会话并发送")}
@@ -401,8 +479,8 @@ export function HomePage() {
             <Dialog
               open={runtimeOpen}
               labelledBy="new-session-runtime-title"
-              className={ui("runtime-config-dialog")}
-              maxWidth={560}
+              className={ui("runtime-config-dialog new-session-runtime-dialog")}
+              maxWidth={680}
               onClose={() => setRuntimeOpen(false)}
             >
               <header className={ui("dialog-heading runtime-config-heading")}>
@@ -455,7 +533,7 @@ export function HomePage() {
                 <label className={ui("field runtime-prompt-field")}>
                   <span>{t("附加系统提示词")}</span>
                   <textarea
-                    rows={5}
+                    rows={3}
                     value={systemPrompt}
                     disabled={busy}
                     aria-label={t("附加系统提示词")}

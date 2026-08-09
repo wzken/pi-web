@@ -282,6 +282,16 @@ export interface PiStatus {
   errors: string[];
 }
 
+export interface PiUpdateInfo {
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  checkedAt: string;
+  changelogUrl: string;
+  note: string | null;
+  error: string | null;
+}
+
 export const authRotateSchema = z
   .object({
     hash: z

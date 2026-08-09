@@ -235,7 +235,7 @@
   font-weight: 620;
 }
 
-.runtime-config-grid :is(input, select, textarea) {
+.runtime-config-grid :is(input:not([type="range"]), select, textarea) {
   width: 100%;
   min-width: 0;
   border-color: var(--line);
@@ -243,7 +243,7 @@
   background: var(--panel-2);
 }
 
-.runtime-config-grid :is(input, select) {
+.runtime-config-grid :is(input:not([type="range"]), select) {
   min-height: 44px;
 }
 

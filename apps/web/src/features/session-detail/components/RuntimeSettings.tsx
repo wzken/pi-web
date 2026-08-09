@@ -1,10 +1,13 @@
 import type { ThinkingLevel } from "@pi-web/protocol";
-import { Settings2, X } from "lucide-react";
+import { ChevronDown, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, jsonBody } from "../../../api";
 import { Button, Dialog, IconButton } from "../../../components";
 import { ModelSelect } from "../../../ModelSelect";
-import { ThinkingLevelControl } from "../../../ThinkingLevelControl";
+import {
+  ThinkingLevelControl,
+  thinkingLevelLabel
+} from "../../../ThinkingLevelControl";
 import { t } from "../../../i18n";
 import { ui } from "../../../ui";
 
@@ -81,8 +84,9 @@ export function RuntimeSettings({
         title={t("模型与思考级别")}
         onClick={() => setOpen(true)}
       >
-        <Settings2 size={13} />
-        <span>{shortModelName(model) || t("默认模型")}</span>
+        <Sparkles size={13} />
+        <span>{thinkingLevel ? thinkingLevelLabel(thinkingLevel) : t("默认思考")}</span>
+        <ChevronDown size={12} />
       </Button>
 
       <Dialog
@@ -94,8 +98,7 @@ export function RuntimeSettings({
           if (!busy) setOpen(false);
         }}
       >
-        <div>
-          <header className={ui("dialog-heading runtime-config-heading")}>
+        <header className={ui("dialog-heading runtime-config-heading")}>
             <div>
               <p className={ui("eyebrow")}>SESSION RUNTIME</p>
               <h2 id="session-runtime-title">{t("模型与思考级别")}</h2>
@@ -108,9 +111,9 @@ export function RuntimeSettings({
             >
               <X size={18} />
             </IconButton>
-          </header>
+        </header>
 
-          <div className={ui("runtime-config-grid")}>
+        <div className={ui("runtime-config-grid")}>
             <div className={ui("field")}>
               <span>{t("模型")}</span>
               <ModelSelect
@@ -136,9 +139,9 @@ export function RuntimeSettings({
                 {t("先恢复会话，才能修改运行参数。")}
               </p>
             )}
-          </div>
+        </div>
 
-          <footer className={ui("dialog-actions runtime-config-actions")}>
+        <footer className={ui("dialog-actions runtime-config-actions")}>
             <Button
               type="button"
               variant="secondary"
@@ -160,14 +163,8 @@ export function RuntimeSettings({
             >
               {t("应用")}
             </Button>
-          </footer>
-        </div>
+        </footer>
       </Dialog>
     </div>
   );
-}
-
-function shortModelName(model: string | null): string {
-  if (!model) return "";
-  return model.split("/").at(-1) ?? model;
 }

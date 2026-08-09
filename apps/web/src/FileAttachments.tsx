@@ -1,5 +1,12 @@
 import { FileText, Paperclip, Plus, X } from "lucide-react";
-import { useCallback, useRef, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type DragEventHandler
+} from "react";
 import { api, jsonBody } from "./api";
 import { IconButton } from "./components";
 import {
@@ -47,6 +54,67 @@ interface AttachmentSelectionQueueOptions {
 
 export interface AttachmentSelectionQueue {
   add(selected: File[]): Promise<void>;
+}
+
+export interface AttachmentDropZoneProps {
+  onDragEnter: DragEventHandler<HTMLElement>;
+  onDragOver: DragEventHandler<HTMLElement>;
+  onDragLeave: DragEventHandler<HTMLElement>;
+  onDrop: DragEventHandler<HTMLElement>;
+}
+
+export function useAttachmentDropZone({
+  disabled,
+  onAdd
+}: {
+  disabled: boolean;
+  onAdd: (files: File[]) => Promise<void>;
+}): { dragActive: boolean; dropZoneProps: AttachmentDropZoneProps } {
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
+
+  const handleDragEnter = useCallback((event: DragEvent<HTMLElement>) => {
+    if (disabled || !hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragActive(true);
+  }, [disabled]);
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLElement>) => {
+    if (disabled || !hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, [disabled]);
+
+  const handleDragLeave = useCallback((event: DragEvent<HTMLElement>) => {
+    if (!hasDraggedFiles(event.dataTransfer)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  }, []);
+
+  const handleDrop = useCallback((event: DragEvent<HTMLElement>) => {
+    if (!hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    if (disabled) return;
+    const selected = Array.from(event.dataTransfer.files);
+    if (selected.length > 0) void onAdd(selected);
+  }, [disabled, onAdd]);
+
+  return {
+    dragActive,
+    dropZoneProps: {
+      onDragEnter: handleDragEnter,
+      onDragOver: handleDragOver,
+      onDragLeave: handleDragLeave,
+      onDrop: handleDrop
+    }
+  };
+}
+
+export function hasDraggedFiles(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.types).includes("Files");
 }
 
 export function createAttachmentSelectionQueue({
@@ -178,7 +246,7 @@ export function AttachmentPicker({
       <IconButton
         className={className}
         label={t("添加附件")}
-        tooltip={t("添加图片、代码、文档或日志")}
+        tooltip={null}
         variant="toolbar"
         size="sm"
         disabled={disabled}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendAttachmentReferences,
   createAttachmentSelectionQueue,
+  hasDraggedFiles,
   type PendingFileAttachment
 } from "./FileAttachments";
 import type { PendingImage } from "./ImageAttachments";
@@ -36,6 +37,17 @@ describe("attachment prompt references", () => {
         }
       ])
     ).toBe("@.pi-web/attachments/readme.md");
+  });
+});
+
+describe("attachment drop detection", () => {
+  it("only activates for operating-system file drags", () => {
+    expect(
+      hasDraggedFiles({ types: ["Files"] } as unknown as DataTransfer)
+    ).toBe(true);
+    expect(
+      hasDraggedFiles({ types: ["text/plain"] } as unknown as DataTransfer)
+    ).toBe(false);
   });
 });
 

@@ -11,6 +11,7 @@ export interface PiRpcWorkerOptions {
   cwd: string;
   name: string;
   sessionPath?: string | null;
+  forkSessionPath?: string | null;
   model?: string | null;
   thinkingLevel?: ThinkingLevel | null;
   systemPrompt?: string | null;
@@ -83,7 +84,17 @@ export class PiRpcWorker extends EventEmitter {
     }
     const args = [...(this.#options.prefixArgs ?? []), "--mode", "rpc", "--name", this.#options.name];
     if (this.#options.noSession) args.push("--no-session");
+    if (this.#options.sessionPath && this.#options.forkSessionPath) {
+      throw new PiWebError(
+        "INVALID_SESSION_SOURCE",
+        "A Pi worker cannot resume and fork a session at the same time",
+        400
+      );
+    }
     if (this.#options.sessionPath) args.push("--session", this.#options.sessionPath);
+    if (this.#options.forkSessionPath) {
+      args.push("--fork", this.#options.forkSessionPath);
+    }
     if (this.#options.extensionPath) args.push("--extension", this.#options.extensionPath);
     if (this.#options.systemPrompt?.trim()) {
       args.push("--append-system-prompt", this.#options.systemPrompt.trim());

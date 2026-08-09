@@ -45,6 +45,9 @@ interface SessionDetailViewProps {
     status: SessionStatus
   ) => Promise<void>;
   onExport: () => void;
+  onFork: () => Promise<void>;
+  onDelete: () => Promise<void>;
+  sessionMutationBusy: "fork" | "delete" | null;
   onLoadEarlier: () => Promise<void>;
   onRetried: () => Promise<void>;
   onRuntimeUpdated: () => Promise<void>;
@@ -58,6 +61,9 @@ export function SessionDetailView({
   onControl,
   onReplayLastPrompt,
   onExport,
+  onFork,
+  onDelete,
+  sessionMutationBusy,
   onLoadEarlier,
   onRetried,
   onRuntimeUpdated
@@ -151,6 +157,9 @@ export function SessionDetailView({
             });
           }}
           onExport={onExport}
+          onFork={onFork}
+          onDelete={onDelete}
+          sessionMutationBusy={sessionMutationBusy}
           onControl={onControl}
           onReplayLastPrompt={onReplayLastPrompt}
         />
@@ -188,6 +197,7 @@ export function SessionDetailView({
           }`)}
         >
           <MessageTimeline
+            sessionId={sessionId}
             messages={snapshot.messages}
             firstItemIndex={state.firstItemIndex}
             activities={state.activities}
@@ -195,8 +205,11 @@ export function SessionDetailView({
             running={
               session.status === "running" || session.status === "stopping"
             }
+            status={session.status}
+            replayBusy={state.replayBusy}
             truncated={snapshot.truncated}
             onLoadEarlier={onLoadEarlier}
+            onReplayPrompt={onReplayLastPrompt}
           />
           {terminalOpen && (
             <Suspense fallback={<Loading label={t("载入终端")} />}>

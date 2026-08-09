@@ -117,4 +117,36 @@ describe("Pi package argv validation", () => {
     }
     expect(audit).toHaveBeenCalledTimes(2);
   });
+
+  it("checks the official Pi release endpoint and caches the reminder", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ version: "0.84.1", note: "New release" }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    ) as unknown as typeof fetch;
+    const manager = new PiManager(
+      { piExecutable: "pi" } as PiWebConfig,
+      { audit: vi.fn() } as unknown as SessionDatabase,
+      async () => ({ stdout: "Pi Coding Agent 0.82.0\n", stderr: "" }),
+      fetcher
+    );
+
+    await expect(manager.updateStatus()).resolves.toMatchObject({
+      currentVersion: "0.82.0",
+      latestVersion: "0.84.1",
+      updateAvailable: true,
+      changelogUrl: "https://pi.dev/changelog",
+      error: null
+    });
+    await manager.updateStatus();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://pi.dev/api/latest-version",
+      expect.objectContaining({ headers: { accept: "application/json" } })
+    );
+
+    await manager.updateStatus(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });
