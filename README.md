@@ -181,7 +181,7 @@ Or start the self-contained Docker deployment:
 
 ```bash
 cp .env.docker.example .env
-mkdir -p .runtime/docker/data .runtime/docker/pi workspaces
+mkdir -p .runtime/docker/data .runtime/docker/pi .runtime/docker/workspaces
 docker compose build
 docker compose run --rm pi-web node dist/index.js set-password
 docker compose run --rm --entrypoint pi pi-web

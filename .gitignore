@@ -16,8 +16,6 @@ test-results/
 !.env.docker.example
 .pi-web-dev/
 .fake-pi-*.jsonl
-workspaces/*
-!workspaces/.gitkeep
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

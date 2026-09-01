@@ -78,7 +78,7 @@ POSIX shell:
 
 ```bash
 cp .env.docker.example .env
-mkdir -p .runtime/docker/data .runtime/docker/pi workspaces
+mkdir -p .runtime/docker/data .runtime/docker/pi .runtime/docker/workspaces
 docker compose build
 docker compose run --rm pi-web node dist/index.js set-password
 docker compose run --rm --entrypoint pi pi-web
@@ -92,7 +92,7 @@ PowerShell:
 Copy-Item .env.docker.example .env
 New-Item -ItemType Directory -Force .runtime\docker\data
 New-Item -ItemType Directory -Force .runtime\docker\pi
-New-Item -ItemType Directory -Force workspaces
+New-Item -ItemType Directory -Force .runtime\docker\workspaces
 docker compose build
 docker compose run --rm pi-web node dist/index.js set-password
 docker compose run --rm --entrypoint pi pi-web
@@ -104,7 +104,7 @@ docker compose up -d
 | --- | --- | --- |
 | `.runtime/docker/data` | `/data` | Configuration, SQLite, themes, runtime state |
 | `.runtime/docker/pi` | `/home/node/.pi` | Pi login and sessions |
-| `workspaces` | `/home/pi` | Projects Pi is allowed to access |
+| `.runtime/docker/workspaces` | `/home/pi` | Projects Pi is allowed to access |
 
 Do not mount the Docker socket or credential directories under `/home/pi`.
 

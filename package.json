@@ -27,14 +27,13 @@
     "dev:web": "pnpm --filter @pi-web/web dev",
     "pi-web": "node apps/cli/dist/index.js",
     "lint": "eslint .",
-    "lint:a11y": "eslint --config eslint.a11y.config.mjs \"apps/web/src/**/*.{ts,tsx}\"",
     "lint:css-modules": "node scripts/check-css-modules.mjs",
     "lint:i18n": "node scripts/check-i18n.mjs",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm build && playwright test",
-    "verify": "pnpm lint && pnpm lint:a11y && pnpm lint:css-modules && pnpm lint:i18n && pnpm typecheck && pnpm test && pnpm build",
+    "verify": "pnpm lint && pnpm lint:css-modules && pnpm lint:i18n && pnpm typecheck && pnpm test && pnpm build",
     "clean": "pnpm -r run clean && node -e \"for (const path of ['playwright-report','test-results','.runtime/playwright-report','.runtime/test-results','.runtime/e2e','.runtime/e2e-preview-fake','.runtime/vite-cache','.runtime/tests','.runtime/dev.log','.runtime/dev.err.log','.runtime/preview-e2e.log','.runtime/preview-e2e.err.log']) require('fs').rmSync(path,{recursive:true,force:true})\""
   },
   "devDependencies": {

@@ -26,7 +26,7 @@ services:
         source: ./.runtime/docker/pi
         target: /home/node/.pi
       - type: bind
-        source: ./workspaces
+        source: ./.runtime/docker/workspaces
         target: /home/pi
     stop_grace_period: 30s
     healthcheck:
