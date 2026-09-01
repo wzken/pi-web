@@ -212,11 +212,6 @@ export function HomePage() {
     }
   }
 
-  if (error && !settings) {
-    return <ErrorBanner error={displayedError} />;
-  }
-  if (!settings) return <Loading label={t("准备工作区")} />;
-
   return (
     <div className={ui(`home-workbench${railOpen ? "" : " rail-collapsed"}`)}>
       {railOpen && (
@@ -302,6 +297,11 @@ export function HomePage() {
         </header>
 
         <div className={ui("home-start-content")}>
+          {error && !settings ? (
+            <ErrorBanner error={displayedError} />
+          ) : !settings ? (
+            <Loading label={t("准备工作区")} />
+          ) : (
           <div className={ui("home-start-inner")}>
             <div className={ui("home-intro")}>
               <div className={ui("home-agent-mark")} aria-hidden="true">
@@ -542,6 +542,7 @@ export function HomePage() {
               </footer>
             </Dialog>
           </div>
+          )}
         </div>
       </main>
 

@@ -8,25 +8,35 @@ import { LanguageProvider } from "./i18n";
 import "./app.css";
 import {
   applySystemColorScheme,
-  systemColorScheme
+  initialColorScheme
 } from "./system-color-scheme";
+import { ThemeProvider } from "./theme";
+import {
+  applyMaterialThemeSettingsToRoot,
+  readMaterialThemeSettings
+} from "./theme-customization";
 
-const forcedScheme = new URLSearchParams(window.location.search).get("safe-theme") === "1"
-  ? "light"
-  : undefined;
-applySystemColorScheme(
-  document.documentElement,
-  forcedScheme ?? systemColorScheme(window.matchMedia("(prefers-color-scheme: dark)"))
-);
+const colorScheme = initialColorScheme();
+applySystemColorScheme(document.documentElement, colorScheme);
+const materialTheme = readMaterialThemeSettings();
+if (materialTheme.enabled) {
+  applyMaterialThemeSettingsToRoot(
+    document.documentElement,
+    materialTheme,
+    colorScheme
+  );
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <LanguageProvider>
       <BrowserRouter>
         <AuthProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
+          <ThemeProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </ThemeProvider>
         </AuthProvider>
       </BrowserRouter>
     </LanguageProvider>

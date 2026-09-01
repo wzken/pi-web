@@ -1,52 +1,25 @@
 import { Command } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "./router";
 import { useAuth } from "./auth";
-import { Button, ErrorBanner, Loading } from "./components";
+import { Button, ErrorBanner } from "./components";
 import { CommandPalette } from "./CommandPalette";
 import { LoginPage } from "./pages/LoginPage";
-import { NotificationProvider } from "./notification-context";
-import { useNotifications } from "./notification-context";
+import { HomePage } from "./pages/HomePage";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { PiManagerPage } from "./pages/PiManagerPage";
+import { SchedulesPage } from "./pages/SchedulesPage";
+import { SessionDetailPage } from "./pages/SessionDetailPage";
+import { SessionsPage } from "./pages/SessionsPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import {
+  NotificationProvider,
+  useNotifications
+} from "./notification-context";
 import { t, useLanguage } from "./i18n";
-import { startSystemColorSchemeSync } from "./system-color-scheme";
 import { ui } from "./ui";
 import { WorkspacePageShell } from "./WorkspacePageShell";
 import { useKeyboardInset } from "./mobile-viewport";
-import { ThemeProvider } from "./theme";
-
-const HomePage = lazy(() =>
-  import("./pages/HomePage").then((module) => ({ default: module.HomePage }))
-);
-const NotificationsPage = lazy(() =>
-  import("./pages/NotificationsPage").then((module) => ({
-    default: module.NotificationsPage
-  }))
-);
-const PiManagerPage = lazy(() =>
-  import("./pages/PiManagerPage").then((module) => ({
-    default: module.PiManagerPage
-  }))
-);
-const SchedulesPage = lazy(() =>
-  import("./pages/SchedulesPage").then((module) => ({
-    default: module.SchedulesPage
-  }))
-);
-const SessionDetailPage = lazy(() =>
-  import("./pages/SessionDetailPage").then((module) => ({
-    default: module.SessionDetailPage
-  }))
-);
-const SessionsPage = lazy(() =>
-  import("./pages/SessionsPage").then((module) => ({
-    default: module.SessionsPage
-  }))
-);
-const SettingsPage = lazy(() =>
-  import("./pages/SettingsPage").then((module) => ({
-    default: module.SettingsPage
-  }))
-);
 
 export function App() {
   useLanguage();
@@ -54,99 +27,44 @@ export function App() {
   const { authenticated, authError, retry } = useAuth();
   if (authenticated === null) {
     return (
-      <SystemAppearance>
-        <main className={ui("boot-screen")}>
-        <div className={ui("brand-mark")}>
-          <Command size={25} />
-        </div>
+      <main
+        className={ui("boot-screen")}
+        aria-busy={authError ? undefined : "true"}
+        aria-label={authError ? undefined : t("连接 Pi Web")}
+      >
         {authError ? (
           <>
+            <div className={ui("brand-mark")}>
+              <Command size={25} />
+            </div>
             <ErrorBanner error={authError} />
             <Button variant="secondary" onClick={() => void retry()}>
               {t("重新连接")}
             </Button>
           </>
-        ) : (
-          <Loading label={t("连接 Pi Web")} />
-        )}
-        </main>
-      </SystemAppearance>
+        ) : null}
+      </main>
     );
   }
   if (!authenticated) {
-    return (
-      <SystemAppearance>
-        <LoginPage />
-      </SystemAppearance>
-    );
+    return <LoginPage />;
   }
   return (
-    <ThemeProvider>
-      <NotificationProvider>
-        <AppShell>
-        <Suspense
-        fallback={
-          <main className={ui("route-loading")} aria-live="polite">
-            <Loading label={t("载入页面")} />
-          </main>
-        }
-      >
+    <NotificationProvider>
+      <AppShell>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route
-            path="/sessions"
-            element={
-              <WorkspacePageShell title={t("会话")}>
-                <SessionsPage />
-              </WorkspacePageShell>
-            }
-          />
-          <Route
-            path="/notifications"
-            element={
-              <WorkspacePageShell title={t("通知中心")}>
-                <NotificationsPage />
-              </WorkspacePageShell>
-            }
-          />
+          <Route path="/sessions" element={<SessionsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/sessions/:id" element={<SessionDetailPage />} />
-          <Route
-            path="/schedules"
-            element={
-              <WorkspacePageShell title={t("调度")}>
-                <SchedulesPage />
-              </WorkspacePageShell>
-            }
-          />
-          <Route path="/pi" element={<PiManagerRoute />} />
-          <Route
-            path="/settings"
-            element={
-              <WorkspacePageShell title={t("设置")}>
-                <SettingsPage />
-              </WorkspacePageShell>
-            }
-          />
+          <Route path="/schedules" element={<SchedulesPage />} />
+          <Route path="/pi" element={<PiManagerPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Suspense>
       </AppShell>
-      </NotificationProvider>
-    </ThemeProvider>
+    </NotificationProvider>
   );
-}
-
-function SystemAppearance({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    const safeMode =
-      new URLSearchParams(window.location.search).get("safe-theme") === "1";
-    return startSystemColorSchemeSync(
-      document.documentElement,
-      window.matchMedia("(prefers-color-scheme: dark)"),
-      safeMode ? "light" : undefined
-    );
-  }, []);
-  return children;
 }
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -228,7 +146,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       <div className={ui("main-column")}>
         <main id="main-content" ref={pageRef} className={ui("page")}>
-          {children}
+          {workspacePageRoute ? (
+            <WorkspacePageShell title={routeTitle(location.pathname)}>
+              {children}
+            </WorkspacePageShell>
+          ) : (
+            children
+          )}
         </main>
       </div>
       <CommandPalette
@@ -236,14 +160,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
         onClose={() => setCommandOpen(false)}
       />
     </div>
-  );
-}
-
-function PiManagerRoute() {
-  return (
-    <WorkspacePageShell title={t("Pi 管理")}>
-      <PiManagerPage />
-    </WorkspacePageShell>
   );
 }
 

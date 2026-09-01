@@ -1155,12 +1155,6 @@ textarea:focus-visible {
   gap: 10px;
 }
 
-.route-loading {
-  display: grid;
-  min-height: 100vh;
-  place-items: center;
-}
-
 .message-area {
   position: relative;
   min-height: 0;

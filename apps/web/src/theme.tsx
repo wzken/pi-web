@@ -15,6 +15,8 @@ import type {
 } from "@pi-web/protocol";
 import { themeTokenNames } from "@pi-web/protocol/theme-tokens";
 import { api, isAbortError, jsonBody } from "./api";
+import { useAuth } from "./auth";
+import { applySystemColorScheme } from "./system-color-scheme";
 import {
   applyMaterialThemeSettingsToRoot,
   clearMaterialThemeTokens,
@@ -46,6 +48,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 const themeColorModeStorageKey = "pi-web:color-mode";
 
 export function ThemeProvider({ children }: PropsWithChildren) {
+  const { authenticated } = useAuth();
   const [catalog, setCatalog] = useState<ThemeCatalog | null>(null);
   const [preferencePreview, setPreferencePreview] =
     useState<ThemePreferences | null>(null);
@@ -63,6 +66,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   );
 
   useEffect(() => {
+    if (!authenticated) return;
     const controller = new AbortController();
     void api<ThemeCatalog>("/api/themes", { signal: controller.signal })
       .then((value) => {
@@ -79,7 +83,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -133,6 +137,18 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   }, []);
 
   useLayoutEffect(() => {
+    if (loading && !effectiveCatalog) {
+      const root = document.documentElement;
+      applySystemColorScheme(root, resolvedColorScheme);
+      const themeColor = document.querySelector<HTMLMetaElement>(
+        'meta[name="theme-color"]'
+      );
+      if (themeColor) {
+        themeColor.content =
+          resolvedColorScheme === "dark" ? "#0c1110" : "#f3f5f0";
+      }
+      return;
+    }
     applyTheme(
       activeTheme,
       safeMode ? null : effectiveCatalog,
@@ -159,6 +175,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     activeTheme,
     effectiveCatalog,
     effectiveMaterialThemeSettings,
+    loading,
     resolvedColorScheme,
     safeMode
   ]);

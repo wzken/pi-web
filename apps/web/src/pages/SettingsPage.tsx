@@ -59,7 +59,7 @@ export function SettingsPage() {
         if (section && content) {
           window.requestAnimationFrame(() =>
             content.scrollTo({
-              top: section.offsetTop,
+              top: next === "appearance" ? 0 : section.offsetTop,
               behavior: "auto"
             })
           );
@@ -75,6 +75,9 @@ export function SettingsPage() {
     const content = settingsContentRef.current;
     if (!content) return;
     const outer = content.closest<HTMLElement>(".workspace-page-content");
+    const sections = settingsLinks
+      .map(({ href }) => document.getElementById(href.slice(1)))
+      .filter((section): section is HTMLElement => section !== null);
     let frame = 0;
     const updateActiveSection = () => {
       window.cancelAnimationFrame(frame);
@@ -82,9 +85,10 @@ export function SettingsPage() {
         const scrollRoot =
           content.scrollHeight > content.clientHeight + 1 ? content : outer ?? content;
         const rootTop = scrollRoot.getBoundingClientRect().top;
-        const sections = settingsLinks
-          .map(({ href }) => document.getElementById(href.slice(1)))
-          .filter((section): section is HTMLElement => section !== null);
+        if (scrollRoot.scrollTop <= 1) {
+          if (sections[0]?.id) setActiveSection(sections[0].id);
+          return;
+        }
         const next = sections.reduce((active, section) => {
           return section.getBoundingClientRect().top - rootTop <= 40
             ? section
@@ -93,15 +97,11 @@ export function SettingsPage() {
         if (next?.id) setActiveSection(next.id);
       });
     };
-    const resizeObserver = new ResizeObserver(updateActiveSection);
-    resizeObserver.observe(content);
-    updateActiveSection();
     content.addEventListener("scroll", updateActiveSection, { passive: true });
     outer?.addEventListener("scroll", updateActiveSection, { passive: true });
     window.addEventListener("resize", updateActiveSection);
     return () => {
       window.cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
       content.removeEventListener("scroll", updateActiveSection);
       outer?.removeEventListener("scroll", updateActiveSection);
       window.removeEventListener("resize", updateActiveSection);
@@ -174,7 +174,7 @@ export function SettingsPage() {
                   const content = settingsContentRef.current;
                   if (section && content) {
                     content.scrollTo({
-                      top: section.offsetTop,
+                      top: sectionId === "appearance" ? 0 : section.offsetTop,
                       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
                         ? "auto"
                         : "smooth"

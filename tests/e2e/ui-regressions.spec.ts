@@ -843,5 +843,10 @@ async function authenticate(page: Page, path: string): Promise<void> {
     data: { key: accessKey }
   });
   expect(response.ok()).toBe(true);
+  const themeReady = page.waitForResponse(
+    (candidate) =>
+      new URL(candidate.url()).pathname === "/api/themes" && candidate.ok()
+  );
   await page.goto(path);
+  await themeReady;
 }
