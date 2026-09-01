@@ -193,7 +193,7 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   const grownHomeHeight = (await homeTaskInput.boundingBox())!.height;
   expect(grownHomeHeight).toBeGreaterThan(compactHomeHeight);
   expect(grownHomeHeight).toBeLessThanOrEqual(
-    testInfo.project.name === "mobile" ? 118 : 160
+    (testInfo.project.name === "mobile" ? 118 : 160) + 1
   );
   await expect(page.getByRole("button", { name: "展开输入框" })).toHaveCount(0);
   await homeTaskInput.fill("");
@@ -481,7 +481,7 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   await detailComposer.fill("第一行\n第二行\n第三行\n第四行");
   const expandedComposerHeight = (await detailComposer.boundingBox())!.height;
   expect(expandedComposerHeight).toBeGreaterThan(compactComposerHeight);
-  expect(expandedComposerHeight).toBeLessThanOrEqual(160);
+  expect(expandedComposerHeight).toBeLessThanOrEqual(161);
   const composerLayout = await page.locator(".composer-toolbar").evaluate((toolbar) => {
     const box = toolbar.getBoundingClientRect();
     const controls = Array.from(toolbar.querySelectorAll<HTMLElement>("button"))

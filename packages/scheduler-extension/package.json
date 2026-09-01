@@ -19,7 +19,7 @@
   "dependencies": {
     "@pi-web/ipc": "workspace:*",
     "@pi-web/protocol": "workspace:*",
-    "typebox": "^1.0.0"
+    "typebox": "^1.3.23"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.84.4"
