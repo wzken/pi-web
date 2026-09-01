@@ -1,0 +1,201 @@
+.buttonLoading {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.dialogHost {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  overflow: hidden;
+}
+
+.dialogHost::backdrop {
+  background: rgb(0 0 0 / 56%);
+  backdrop-filter: blur(4px);
+}
+
+.dialogBackdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  cursor: default;
+  background: transparent;
+}
+
+.dialogPanel {
+  position: relative;
+  width: min(100%, var(--app-dialog-max-width, 35rem)) !important;
+  max-width: 100%;
+  max-height: calc(100dvh - 2rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.spinner {
+  display: inline-block;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 2.75rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0.1875rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  cursor: pointer;
+  background: var(--panel-3);
+  transition: 140ms ease;
+}
+
+.switch::before {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+  content: "";
+  transition: translate 140ms ease;
+}
+
+.switch[aria-checked="true"] {
+  border-color: var(--lime);
+  color: var(--lime-ink);
+  background: var(--lime);
+}
+
+.switch[aria-checked="true"]::before {
+  translate: 1.25rem 0;
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.switchLoading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.menuPopover {
+  position: fixed;
+  z-index: 10000;
+  max-width: calc(100vw - 1rem);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+  overscroll-behavior: contain;
+}
+
+.menu {
+  display: grid;
+  box-sizing: border-box;
+  min-width: var(--app-menu-min-width, 10rem);
+  max-width: min(calc(100vw - 2rem), var(--app-menu-max-width, 17.5rem));
+  padding: 0.35rem;
+}
+
+.menuItem {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+}
+
+.menuItem:hover:not(:disabled),
+.menuItem:focus-visible {
+  outline: 0;
+  background: var(--panel-3);
+}
+
+.menuItem[data-active="true"] {
+  color: var(--lime-ink);
+  font-weight: 700;
+  background: var(--lime);
+}
+
+.menuItem[data-danger="true"] {
+  color: var(--red);
+}
+
+.menuItem[data-danger="true"][data-active="true"] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--red) 22%, var(--panel));
+}
+
+.menuItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (max-width: 600px) {
+  .dialogHost {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .dialogPanel {
+    max-height: calc(100dvh - env(safe-area-inset-top));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.4s;
+  }
+}

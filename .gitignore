@@ -1,0 +1,39 @@
+# Dependencies and generated output
+node_modules/
+.runtime/
+coverage/
+playwright-report/
+test-results/
+**/dist/
+!theme-packs/dist/
+!theme-packs/dist/*.zip
+
+# Local configuration and runtime state
+.codex/
+.env
+.env.*
+!.env.example
+!.env.docker.example
+.pi-web-dev/
+.fake-pi-*.jsonl
+workspaces/*
+!workspaces/.gitkeep
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+
+# Credentials and local certificates
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini

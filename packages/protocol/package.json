@@ -1,0 +1,30 @@
+{
+  "name": "@pi-web/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./theme-tokens": {
+      "types": "./src/theme-tokens.ts",
+      "import": "./dist/theme-tokens.js"
+    },
+    "./prompt-images": {
+      "types": "./src/prompt-images.ts",
+      "import": "./dist/prompt-images.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}

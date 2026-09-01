@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "id": "material-3-workbench",
+  "name": "Material 3 Workbench",
+  "version": "2.1.1",
+  "description": "亮暗双模式、柔和表面容器、动态色角色与圆润状态层；参考 Google Material 3，非官方主题。",
+  "author": "Pi Web",
+  "schemes": {
+    "light": {
+      "tokens": {
+        "--bg": "#fef7ff",
+        "--bg-raised": "#fffbfe",
+        "--panel": "#fffbfe",
+        "--panel-2": "#f3edf7",
+        "--panel-3": "#eaddff",
+        "--line": "#cac4d0",
+        "--line-soft": "#e7e0ec",
+        "--text": "#1d1b20",
+        "--text-soft": "#49454f",
+        "--text-dim": "#79747e",
+        "--lime": "#6750a4",
+        "--lime-ink": "#ffffff",
+        "--teal": "#006a6a",
+        "--violet": "#6750a4",
+        "--amber": "#7d5700",
+        "--red": "#b3261e",
+        "--blue": "#415f91",
+        "--shadow": "0 2px 10px rgb(29 27 32 / 10%)",
+        "--radius": "24px",
+        "--radius-sm": "12px",
+        "--font-ui": "Roboto, \"Google Sans\", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "--font-mono": "\"Roboto Mono\", \"SFMono-Regular\", Consolas, monospace"
+      }
+    },
+    "dark": {
+      "tokens": {
+        "--bg": "#141218",
+        "--bg-raised": "#211f26",
+        "--panel": "#211f26",
+        "--panel-2": "#1d1b20",
+        "--panel-3": "#4f378b",
+        "--line": "#49454f",
+        "--line-soft": "#34313a",
+        "--text": "#e6e1e5",
+        "--text-soft": "#cac4d0",
+        "--text-dim": "#938f99",
+        "--lime": "#d0bcff",
+        "--lime-ink": "#381e72",
+        "--teal": "#4fd8d8",
+        "--violet": "#d0bcff",
+        "--amber": "#ffb951",
+        "--red": "#f2b8b5",
+        "--blue": "#aec6ff",
+        "--shadow": "0 3px 16px rgb(0 0 0 / 36%)",
+        "--radius": "24px",
+        "--radius-sm": "12px",
+        "--font-ui": "Roboto, \"Google Sans\", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "--font-mono": "\"Roboto Mono\", \"SFMono-Regular\", Consolas, monospace"
+      }
+    }
+  },
+  "css": "theme.css"
+}

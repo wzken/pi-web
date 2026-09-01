@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+minimumReleaseAge: 1440
+allowBuilds:
+  '@google/genai': false
+  esbuild: true
+  node-pty: true
+  protobufjs: false
+overrides:
+  'ansi-regex@5.0.0': 5.0.1
+  'brace-expansion@>=4.0.0 <5.0.9': 5.0.9
+  'fast-uri@>=3.0.0 <3.1.5': 3.1.5
+  'fast-uri@>=4.0.0 <4.1.2': 4.1.2

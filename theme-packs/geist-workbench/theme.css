@@ -1,0 +1,183 @@
+html[data-theme-id="geist-workbench"] {
+  color-scheme: light dark;
+}
+
+html[data-theme-id="geist-workbench"] body {
+  background: var(--bg);
+}
+
+html[data-theme-id="geist-workbench"] .sidebar,
+html[data-theme-id="geist-workbench"] .workbench-session-rail,
+html[data-theme-id="geist-workbench"] .file-pane,
+html[data-theme-id="geist-workbench"] .mobile-header,
+html[data-theme-id="geist-workbench"] .workbench-topbar,
+html[data-theme-id="geist-workbench"] .session-header {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  backdrop-filter: saturate(1.2) blur(16px);
+}
+
+html[data-theme-id="geist-workbench"] .brand-mark,
+html[data-theme-id="geist-workbench"] .metric-icon,
+html[data-theme-id="geist-workbench"] .row-avatar,
+html[data-theme-id="geist-workbench"] .message-avatar {
+  border-color: var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+}
+
+html[data-theme-id="geist-workbench"] .nav-link,
+html[data-theme-id="geist-workbench"] .session-nav-row,
+html[data-theme-id="geist-workbench"] .file-row {
+  border-radius: 6px;
+}
+
+html[data-theme-id="geist-workbench"] .nav-link.active,
+html[data-theme-id="geist-workbench"] .session-nav-row.is-active {
+  border-color: var(--lime);
+  color: var(--lime-ink);
+  background: var(--lime);
+  box-shadow: none;
+}
+
+html[data-theme-id="geist-workbench"] .nav-link.active::before {
+  display: none;
+}
+
+html[data-theme-id="geist-workbench"] .panel,
+html[data-theme-id="geist-workbench"] .session-card,
+html[data-theme-id="geist-workbench"] .toolbar,
+html[data-theme-id="geist-workbench"] .dialog,
+html[data-theme-id="geist-workbench"] .composer-box,
+html[data-theme-id="geist-workbench"] .terminal-panel {
+  border-color: var(--line);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+html[data-theme-id="geist-workbench"] .metric-card,
+html[data-theme-id="geist-workbench"] .session-card {
+  border-color: var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+html[data-theme-id="geist-workbench"] .panel-heading,
+html[data-theme-id="geist-workbench"] .session-row,
+html[data-theme-id="geist-workbench"] .timeline-row,
+html[data-theme-id="geist-workbench"] .file-header,
+html[data-theme-id="geist-workbench"] .file-root,
+html[data-theme-id="geist-workbench"] .breadcrumbs,
+html[data-theme-id="geist-workbench"] .terminal-panel > header,
+html[data-theme-id="geist-workbench"] .terminal-meta {
+  border-color: var(--line-soft);
+}
+
+html[data-theme-id="geist-workbench"] .button,
+html[data-theme-id="geist-workbench"] .icon-button,
+html[data-theme-id="geist-workbench"] input,
+html[data-theme-id="geist-workbench"] select,
+html[data-theme-id="geist-workbench"] textarea,
+html[data-theme-id="geist-workbench"] .search-box,
+html[data-theme-id="geist-workbench"] .status-pill {
+  border-radius: 6px;
+}
+
+html[data-theme-id="geist-workbench"] .button-primary {
+  border-color: var(--lime);
+  color: var(--lime-ink);
+  background: var(--lime);
+  box-shadow: none;
+}
+
+html[data-theme-id="geist-workbench"] .button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lime) 82%, var(--panel));
+  transform: none;
+}
+
+html[data-theme-id="geist-workbench"] .button-secondary,
+html[data-theme-id="geist-workbench"] .button-outline,
+html[data-theme-id="geist-workbench"] .button-toolbar,
+html[data-theme-id="geist-workbench"] .icon-button {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--panel);
+}
+
+html[data-theme-id="geist-workbench"] .button:hover:not(:disabled),
+html[data-theme-id="geist-workbench"] .icon-button:hover:not(:disabled) {
+  border-color: var(--text-dim);
+  background: var(--panel-3);
+  transform: none;
+}
+
+html[data-theme-id="geist-workbench"] .home-start,
+html[data-theme-id="geist-workbench"] .conversation-pane,
+html[data-theme-id="geist-workbench"] .message-area,
+html[data-theme-id="geist-workbench"] .composer,
+html[data-theme-id="geist-workbench"] .file-list,
+html[data-theme-id="geist-workbench"] .file-preview {
+  background: var(--panel);
+}
+
+html[data-theme-id="geist-workbench"] .message.assistant .message-avatar {
+  color: var(--lime-ink);
+  background: var(--lime);
+}
+
+html[data-theme-id="geist-workbench"] .markdown code {
+  color: var(--red);
+  background: var(--panel-3);
+}
+
+html[data-theme-id="geist-workbench"] .markdown pre,
+html[data-theme-id="geist-workbench"] .tool-block pre {
+  color: #ededed;
+  background: #000000;
+}
+
+html[data-theme-id="geist-workbench"] .terminal-viewport {
+  background: var(--panel);
+}
+
+html[data-theme-id="geist-workbench"] .login-page {
+  background: var(--bg);
+}
+
+html[data-theme-id="geist-workbench"] .login-intro {
+  border-color: #000000;
+  color: #ffffff;
+  background:
+    linear-gradient(#1a1a1a 1px, transparent 1px),
+    linear-gradient(90deg, #1a1a1a 1px, transparent 1px),
+    #000000;
+  background-size: 32px 32px;
+}
+
+html[data-theme-id="geist-workbench"] .login-intro .login-logo,
+html[data-theme-id="geist-workbench"] .login-intro .eyebrow {
+  color: #ffffff;
+}
+
+html[data-theme-id="geist-workbench"] .login-intro .login-copy > p:last-child,
+html[data-theme-id="geist-workbench"] .login-intro .login-runtime small {
+  color: #a1a1a1;
+}
+
+html[data-theme-id="geist-workbench"] .login-panel,
+html[data-theme-id="geist-workbench"] .login-card {
+  background: var(--panel);
+}
+
+html[data-theme-id="geist-workbench"] *:focus-visible {
+  outline-color: var(--blue);
+}
+
+html[data-theme-id="geist-workbench"][data-color-mode="dark"] .login-intro {
+  border-color: var(--line);
+  background:
+    linear-gradient(#1a1a1a 1px, transparent 1px),
+    linear-gradient(90deg, #1a1a1a 1px, transparent 1px),
+    #000000;
+}
