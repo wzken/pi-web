@@ -6,7 +6,7 @@ Describe the user-visible change and why it is needed.
 
 - [ ] `pnpm verify`
 - [ ] `pnpm test:e2e`
-- [ ] `pnpm audit --prod`
+- [ ] `pnpm audit --prod --registry=https://registry.npmjs.org`
 - [ ] Documentation updated when behavior or configuration changed
 
 ## Security and data

@@ -161,11 +161,16 @@ offline. Stale HTTP 404/410 subscriptions are removed automatically after the
 next delivery attempt. Restoring only configuration without SQLite creates a
 new VAPID identity and requires every browser to subscribe again.
 
-Close active sessions before changing Pi packages or restarting sessiond. On a
-systemd installation, `pnpm pi-web restart` enforces this and requires an
-explicit `--force` to interrupt active workers. Run `pnpm pi-web doctor` after
-installing the new checkout: Pi Web requires Pi Coding Agent 0.84.1 or newer
-and probes its required no-model RPC command surface.
+Close active sessions before changing Pi packages or restarting sessiond. For a
+systemd checkout upgrade, back up first, then run:
+
+```bash
+git pull --ff-only && pnpm install --frozen-lockfile && pnpm build && pnpm pi-web restart && pnpm pi-web doctor
+```
+
+`pnpm pi-web restart` refuses to interrupt active workers unless `--force` is
+provided. Pi Web requires Pi Coding Agent 0.84.1 or newer and `doctor` probes
+its required no-model RPC command surface after the updated services start.
 
 For Docker this normally means `.runtime/docker/data` and
 `.runtime/docker/pi`. Docker Compose cannot use the host systemd drain command;

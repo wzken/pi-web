@@ -72,7 +72,7 @@ source code and branding are not included here.
 ## Requirements
 
 - Node.js 22.19 or newer.
-- pnpm 11 for source builds.
+- pnpm 11.9.0 for source builds.
 - Linux for the supported systemd installation path.
 - `@earendil-works/pi-coding-agent` installed and configured for the same user.
 
@@ -134,8 +134,9 @@ Run the full verification:
 
 ```bash
 pnpm verify
+pnpm exec playwright install chromium
 pnpm test:e2e
-pnpm audit --prod
+pnpm audit --prod --registry=https://registry.npmjs.org
 ```
 
 The unit and integration suites use the fake Pi worker and need no provider
@@ -151,7 +152,8 @@ pull-request expectations.
 | `apps/server` | Fastify HTTP/WebSocket boundary, authentication, Web Push delivery, remote-address discovery, static assets, file APIs, and PTYs |
 | `apps/sessiond` | Durable session and notification authority, SQLite state, Pi worker supervision, IPC, and Cron |
 | `apps/cli` | Foreground startup, diagnostics, access-key management, and systemd installation |
-| `packages/protocol` | Shared request, event, and domain contracts |
+| `packages/protocol` | Shared request, event, domain, and runtime IPC contracts |
+| `packages/ipc` | Shared authenticated Sessiond client and LF-delimited JSONL transport |
 | `packages/pi-rpc` | Strict JSONL transport for `pi --mode rpc` |
 | `packages/pi-session-reader` | Pi session JSONL parsing and snapshot reconstruction |
 | `packages/config`, `packages/shared` | Configuration, paths, security helpers, and shared state logic |

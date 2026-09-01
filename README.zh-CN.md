@@ -53,7 +53,7 @@ Pi Web 是面向 [Pi Coding Agent](https://pi.dev) 的单用户、自托管 Web
 ## 环境要求
 
 - Node.js 22.19 或更高版本。
-- 使用源码构建时需要 pnpm 11。
+- 使用源码构建时需要 pnpm 11.9.0。
 - systemd 安装路径需要 Linux。
 - 同一用户已经安装并配置 `@earendil-works/pi-coding-agent`。
 
@@ -106,8 +106,9 @@ Vite 界面默认位于 `http://127.0.0.1:5173`，API 和 WebSocket 会代理到
 
 ```bash
 pnpm verify
+pnpm exec playwright install chromium
 pnpm test:e2e
-pnpm audit --prod
+pnpm audit --prod --registry=https://registry.npmjs.org
 ```
 
 单元测试和集成测试使用假 Pi Worker，不需要供应商凭据。Playwright 会启动独立的
@@ -122,7 +123,8 @@ pnpm audit --prod
 | `apps/server` | Fastify HTTP/WebSocket 边界、认证、Web Push 投递、远程地址检测、静态资源、文件 API 和 PTY |
 | `apps/sessiond` | 持久会话与通知权威、SQLite 状态、Pi Worker 管理、IPC 和 Cron |
 | `apps/cli` | 前台启动、诊断、访问密钥管理和 systemd 安装 |
-| `packages/protocol` | 共享请求、事件与领域协议 |
+| `packages/protocol` | 共享请求、事件、领域类型和运行时 IPC 契约 |
+| `packages/ipc` | 共享的认证 Sessiond 客户端和 LF 分隔 JSONL 传输层 |
 | `packages/pi-rpc` | `pi --mode rpc` 的严格 JSONL 传输层 |
 | `packages/pi-session-reader` | Pi 会话 JSONL 解析与快照重建 |
 | `packages/config`、`packages/shared` | 配置、路径、安全辅助函数与共享状态逻辑 |
