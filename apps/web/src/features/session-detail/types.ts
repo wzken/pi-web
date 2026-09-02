@@ -22,7 +22,6 @@ export interface SessionDetailState {
   replayBusy: boolean;
   controlBusy: SessionControlAction | null;
   firstItemIndex: number;
-  clock: number;
 }
 
 export type SessionDetailAction =
@@ -43,8 +42,7 @@ export type SessionDetailAction =
   | { type: "error.set"; error: unknown }
   | { type: "connection.set"; state: ConnectionState }
   | { type: "replayBusy.set"; busy: boolean }
-  | { type: "controlBusy.set"; action: SessionControlAction | null }
-  | { type: "clock.tick"; now: number };
+  | { type: "controlBusy.set"; action: SessionControlAction | null };
 
 export interface FileEntry {
   name: string;

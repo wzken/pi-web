@@ -50,8 +50,7 @@ function makeState(snapshot: SessionSnapshot | null): SessionDetailState {
     connectionState: "connected",
     replayBusy: false,
     controlBusy: null,
-    firstItemIndex: initialSessionFirstItemIndex,
-    clock: 0
+    firstItemIndex: initialSessionFirstItemIndex
   };
 }
 

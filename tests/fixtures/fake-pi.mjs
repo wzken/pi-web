@@ -330,6 +330,58 @@ function finishTurn(text, answer, _images = []) {
       type: "message_update",
       assistantMessageEvent: { type: "text_delta", delta: "Fake Pi is working…" }
     });
+    if (text.includes("rich-rendering")) {
+      appendMessage({
+        role: "assistant",
+        content: [
+          {
+            type: "thinking",
+            thinking: "- inspect the code\n\n```bash\npnpm test\n```"
+          },
+          {
+            type: "toolCall",
+            id: "write-rich",
+            name: "write",
+            arguments: {
+              path: "src/example.ts",
+              content: "export const answer = 42;\n"
+            }
+          },
+          {
+            type: "toolCall",
+            id: "edit-rich",
+            name: "edit",
+            arguments: {
+              path: "src/example.ts",
+              edits: [
+                {
+                  oldText: "export const answer = 41;",
+                  newText: "export const answer = 42;"
+                }
+              ]
+            }
+          }
+        ]
+      });
+      appendMessage({
+        role: "toolResult",
+        toolCallId: "write-rich",
+        toolName: "write",
+        content: [{ type: "text", text: "Successfully wrote src/example.ts" }],
+        isError: false
+      });
+      appendMessage({
+        role: "toolResult",
+        toolCallId: "edit-rich",
+        toolName: "edit",
+        content: [{ type: "text", text: "Successfully replaced 1 block" }],
+        details: {
+          patch: "--- a/src/example.ts\n+++ b/src/example.ts\n@@ -1 +1 @@\n-export const answer = 41;\n+export const answer = 42;"
+        },
+        isError: false
+      });
+      answer = "```ts\nconst answer: number = 42;\n```";
+    }
     if (text.includes("tool")) {
       send({
         type: "tool_execution_end",

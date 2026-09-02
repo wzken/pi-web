@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { ui } from "../../../ui";
@@ -8,7 +9,7 @@ export function Markdown({ children }: { children: string }) {
     <div className={ui("markdown")}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeSanitize]}
+        rehypePlugins={[rehypeSanitize, rehypeHighlight]}
         skipHtml
         components={{
           a: ({ node: _node, children: content, ...props }) => (

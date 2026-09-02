@@ -255,7 +255,26 @@ test("authenticates, runs a durable session, browses files, and schedules work",
   const userMessage = page.locator(".message.user").last();
   await expect(userMessage.locator(".message-actions")).toHaveCount(0);
   const assistantMessage = page.locator(".message.assistant").last();
+  const assistantMessageBody = assistantMessage.locator(".message-body");
+  await expect(assistantMessageBody).toHaveCSS("user-select", "text");
+  const selectedReply = await assistantMessageBody.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element.querySelector(".markdown") ?? element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return selection?.toString() ?? "";
+  });
+  expect(selectedReply).toContain(`Completed: ${homePrompt}`);
+  await page.waitForTimeout(1_100);
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .toContain(`Completed: ${homePrompt}`);
   await expect(assistantMessage.getByRole("button", { name: "复制消息" })).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await assistantMessage.getByRole("button", { name: "复制消息" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(`Completed: ${homePrompt}`);
   await expect(assistantMessage.getByRole("button", { name: "分享消息" })).toHaveCount(0);
   await expect(assistantMessage.getByRole("button", { name: "删除回复" })).toBeVisible();
   await expect(assistantMessage.getByRole("button", { name: "重试消息" })).toBeVisible();
@@ -604,6 +623,40 @@ test("authenticates, runs a durable session, browses files, and schedules work",
       page.getByRole("heading", { name: "今天要做什么？", exact: true })
     ).toBeVisible();
   }
+});
+
+test("renders coding-agent Markdown, thinking, and diffs", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("访问密钥").fill("pi-web-e2e-access");
+  await page.getByRole("button", { name: "安全登录" }).click();
+  await page.getByLabel("新会话任务").fill("rich-rendering");
+  await page.getByRole("button", { name: "创建会话并发送" }).click();
+
+  const highlightedCode = page.locator(".message.assistant .markdown code.hljs");
+  await expect(highlightedCode).toContainText("const answer: number = 42;");
+  await expect(highlightedCode.locator(".hljs-keyword")).toHaveText("const");
+
+  const thinking = page.locator(".thinking-block");
+  await thinking.locator("summary").click();
+  await expect(thinking.locator(".markdown li")).toHaveText("inspect the code");
+  await expect(thinking.locator("code.hljs")).toContainText("pnpm test");
+
+  const writeCall = page.locator(".tool-call-group");
+  await writeCall.locator("summary").click();
+  await expect(
+    writeCall.locator(".hljs-addition").filter({
+      hasText: "export const answer = 42;"
+    })
+  ).toBeVisible();
+
+  const editResult = page.locator(".tool-result-block");
+  await editResult.locator("summary").click();
+  await expect(editResult.locator(".hljs-deletion")).toContainText(
+    "export const answer = 41;"
+  );
+  await expect(editResult.locator(".hljs-addition")).toContainText(
+    "export const answer = 42;"
+  );
 });
 
 test("scrolls long conversations and returns to the latest message", async ({

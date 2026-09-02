@@ -1207,6 +1207,8 @@ textarea:focus-visible {
 
 .message-body {
   flex: 1;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .message-footnote {
@@ -1255,7 +1257,41 @@ textarea:focus-visible {
   background: var(--bg);
   line-height: 1.55;
 }
-.markdown pre code { padding: 0; color: var(--text-soft); background: none; }
+.markdown pre code {
+  display: block;
+  min-width: max-content;
+  padding: 0;
+  color: var(--text-soft);
+  background: none;
+}
+.markdown .hljs-comment,
+.markdown .hljs-quote { color: var(--text-dim); }
+.markdown .hljs-keyword,
+.markdown .hljs-selector-tag,
+.markdown .hljs-deletion { color: var(--red); }
+.markdown .hljs-string,
+.markdown .hljs-attr,
+.markdown .hljs-addition { color: var(--lime); }
+.markdown .hljs-number,
+.markdown .hljs-literal,
+.markdown .hljs-meta { color: var(--amber); }
+.markdown .hljs-title,
+.markdown .hljs-section,
+.markdown .hljs-function { color: var(--teal); }
+.markdown .hljs-variable,
+.markdown .hljs-template-variable,
+.markdown .hljs-type,
+.markdown .hljs-built_in { color: var(--text); }
+.markdown .language-diff :is(.hljs-addition, .hljs-deletion) {
+  display: inline-block;
+  min-width: 100%;
+}
+.markdown .language-diff .hljs-addition {
+  background: color-mix(in srgb, var(--lime) 9%, transparent);
+}
+.markdown .language-diff .hljs-deletion {
+  background: color-mix(in srgb, var(--red) 9%, transparent);
+}
 .markdown table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .markdown th,
 .markdown td { padding: 7px 8px; border: 1px solid var(--line); text-align: left; }
@@ -1293,13 +1329,12 @@ textarea:focus-visible {
   transform: rotate(180deg);
 }
 
-.thinking-block > div {
+.thinking-block > .markdown {
   padding: 10px;
   border-top: 1px solid var(--line-soft);
   color: var(--text-dim);
   font-size: 10px;
   line-height: 1.65;
-  white-space: pre-wrap;
 }
 
 .tool-block pre {
@@ -1314,6 +1349,16 @@ textarea:focus-visible {
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.diff-card-title {
+  overflow: hidden;
+  padding: 8px 11px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-dim);
+  font: 600 9px/1.4 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-result-message {

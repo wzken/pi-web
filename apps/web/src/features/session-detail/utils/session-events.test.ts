@@ -60,8 +60,7 @@ function makeState(): SessionDetailState {
     connectionState: "connected",
     replayBusy: false,
     controlBusy: null,
-    firstItemIndex: 1_000_000,
-    clock: 0
+    firstItemIndex: 1_000_000
   };
 }
 

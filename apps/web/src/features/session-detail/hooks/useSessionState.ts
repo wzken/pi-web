@@ -37,8 +37,7 @@ function createInitialState(): SessionDetailState {
     connectionState: "connecting",
     replayBusy: false,
     controlBusy: null,
-    firstItemIndex: initialSessionFirstItemIndex,
-    clock: Date.now()
+    firstItemIndex: initialSessionFirstItemIndex
   };
 }
 
@@ -103,8 +102,6 @@ export function sessionDetailReducer(
       return { ...state, replayBusy: action.busy };
     case "controlBusy.set":
       return { ...state, controlBusy: action.action };
-    case "clock.tick":
-      return { ...state, clock: action.now };
     default:
       return state;
   }
@@ -343,21 +340,6 @@ export function useSessionState(sessionId: string) {
       }
     };
   }, [invalidateHistoryRequests, refresh]);
-
-  const sessionStatus = state.snapshot?.session.status;
-  useEffect(() => {
-    if (
-      !sessionStatus ||
-      ["failed", "interrupted", "closed"].includes(sessionStatus)
-    ) {
-      return;
-    }
-    const timer = window.setInterval(
-      () => dispatch({ type: "clock.tick", now: Date.now() }),
-      1_000
-    );
-    return () => window.clearInterval(timer);
-  }, [sessionStatus]);
 
   return {
     state,

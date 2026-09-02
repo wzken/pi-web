@@ -25,6 +25,7 @@ import { messageToPlainText, type RetryablePrompt } from "../../../session-messa
 import { ui } from "../../../ui";
 import type { ActivityItem } from "../types";
 import { pretty } from "../utils/session-parsing";
+import { DiffCard, toolResultDiff, writeCallDiff } from "./DiffCard";
 import { Markdown } from "./Markdown";
 import { messageStorageKey, type ToolResultGroupItem } from "./timeline-items";
 
@@ -60,20 +61,24 @@ export function ToolResultGroup({ messages }: { messages: ToolResultGroupItem[] 
           }
         >
           <div className={ui("tool-result-items")}>
-            {messages.map(({ message, messageIndex }) => (
-              <section
-                className={ui(`tool-result-item${message.isError === true ? " is-error" : ""}`)}
-                key={`${messageStorageKey(message)}-${messageIndex}`}
-              >
-                {messages.length > 1 && (
-                  <header>
-                    <strong>{toolResultName(message)}</strong>
-                    <span>{message.isError === true ? t("执行失败") : t("已完成")}</span>
-                  </header>
-                )}
-                <pre>{toolResultText(message)}</pre>
-              </section>
-            ))}
+            {messages.map(({ message, messageIndex }) => {
+              const text = toolResultText(message);
+              const diff = toolResultDiff(message, text);
+              return (
+                <section
+                  className={ui(`tool-result-item${message.isError === true ? " is-error" : ""}`)}
+                  key={`${messageStorageKey(message)}-${messageIndex}`}
+                >
+                  {messages.length > 1 && (
+                    <header>
+                      <strong>{toolResultName(message)}</strong>
+                      <span>{message.isError === true ? t("执行失败") : t("已完成")}</span>
+                    </header>
+                  )}
+                  {diff ? <DiffCard text={diff} /> : <pre>{text}</pre>}
+                </section>
+              );
+            })}
           </div>
         </LazyDetails>
       </div>
@@ -189,8 +194,12 @@ export function MessageCard({
 
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall through for browsers that expose Clipboard API but deny access.
+    }
   }
   const textarea = document.createElement("textarea");
   textarea.value = text;
@@ -273,12 +282,19 @@ function ToolCallGroup({ blocks }: { blocks: PiContentBlock[] }) {
       }
     >
       <div className={ui("tool-call-items")}>
-        {blocks.map((block, index) => (
-          <section className={ui("tool-call-item")} key={`${String(block.id ?? block.name ?? "tool")}-${index}`}>
-            {blocks.length > 1 && <header>{String(block.name ?? t("工具调用"))}</header>}
-            <pre>{pretty(block.arguments ?? block)}</pre>
-          </section>
-        ))}
+        {blocks.map((block, index) => {
+          const write = writeCallDiff(block);
+          return (
+            <section className={ui("tool-call-item")} key={`${String(block.id ?? block.name ?? "tool")}-${index}`}>
+              {blocks.length > 1 && <header>{String(block.name ?? t("工具调用"))}</header>}
+              {write ? (
+                <DiffCard title={write.path} text={write.diff} />
+              ) : (
+                <pre>{pretty(block.arguments ?? block)}</pre>
+              )}
+            </section>
+          );
+        })}
       </div>
     </LazyDetails>
   );
@@ -303,7 +319,7 @@ function ContentBlock({ block }: { block: PiContentBlock }) {
           </>
         }
       >
-        <div>{String(block.thinking ?? block.text)}</div>
+        <Markdown>{String(block.thinking ?? block.text)}</Markdown>
       </LazyDetails>
     );
   }
